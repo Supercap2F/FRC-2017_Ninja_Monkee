@@ -30,7 +30,7 @@ public:
 			 * field-oriented drive, so the gyro input is set to zero.
 			 */
 			robotDrive.MecanumDrive_Cartesian(stick.GetX(), stick.GetY(),
-					stick.GetZ());
+					stick2.GetX());
 
 			frc::Wait(0.005); // wait 5ms to avoid hogging CPU cycles
 		}
@@ -38,18 +38,21 @@ public:
 
 private:
 	// Channels for the wheels
-	static constexpr int kFrontLeftChannel = 2;
-	static constexpr int kRearLeftChannel = 3;
+	static constexpr int kFrontLeftChannel = 0;
+	static constexpr int kRearLeftChannel = 2;
 	static constexpr int kFrontRightChannel = 1;
-	static constexpr int kRearRightChannel = 0;
+	static constexpr int kRearRightChannel = 3;
 
 	static constexpr int kJoystickChannel = 0;
+	static constexpr int kJoystickChannel2 = 1;
 
 	// Robot drive system
 	frc::RobotDrive robotDrive { kFrontLeftChannel, kRearLeftChannel,
 			kFrontRightChannel, kRearRightChannel };
 	// Only joystick
+
 	frc::Joystick stick { kJoystickChannel };
+	frc::Joystick stick2 { kJoystickChannel2 };
 };
 
 START_ROBOT_CLASS(Robot)
