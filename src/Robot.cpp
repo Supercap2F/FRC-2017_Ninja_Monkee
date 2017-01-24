@@ -49,10 +49,20 @@ private:
 	// Robot drive system
 	frc::RobotDrive robotDrive { kFrontLeftChannel, kRearLeftChannel,
 			kFrontRightChannel, kRearRightChannel };
-	// Only joystick
 
+    /********************************************************
+     * Joystick setup
+     *
+     *
+     *
+     ********************************************************/
 	frc::Joystick stick { kJoystickChannel };
 	frc::Joystick stick2 { kJoystickChannel2 };
+	/*  */
+
+
+
+
 };
 
 START_ROBOT_CLASS(Robot)
