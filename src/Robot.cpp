@@ -12,13 +12,90 @@
 #include <Timer.h>
 #include <CameraServer.h>
 
+#include <Encoder.h>
+#include <TalonSRX.h>
+
 class Robot: public frc::IterativeRobot {
 public:
+	void drive() {
+		robotDrive.MecanumDrive_Cartesian((jX), (jY), (j2X));
+	}
+
+	void run_shooter() {
+		switch(shooterLevel){
+		case sl_slow:
+			shooter->Set(j2Z);
+		case sl_normal:;
+		case sl_full:;
+		}
+
+	}
+
+	void pollSensors() {
+		if (joystick.GetX() > jDead || joystick.GetX() < -jDead) {
+			jX = joystick.GetX();
+		} else {
+			jX = 0;
+		}
+
+		if (joystick.GetY() > jDead || joystick.GetY() < -jDead) {
+			jY = joystick.GetY();
+		} else {
+			jY = 0;
+		}
+		if (joystick.GetZ() > jDeadZ || joystick.GetZ() < -jDeadZ) {
+			jZ = joystick.GetZ();
+		} else {
+			jZ = 0;
+		}
+
+		if (joystick2.GetX() > j2Dead || joystick2.GetX() < -j2Dead) {
+			j2X = joystick2.GetX();
+		} else {
+			j2X = 0;
+		}
+
+		if (joystick2.GetY() > j2Dead || joystick2.GetY() < -j2Dead) {
+			j2Y = joystick2.GetY();
+		} else {
+			j2Y = 0;
+		}
+
+		if (joystick2.GetZ() > j2DeadZ || joystick2.GetZ() < -j2DeadZ) {
+			j2Z = joystick2.GetZ();
+		} else {
+			j2Z = 0;
+		}
+		shooterEncoderRate = shooterEncoder->GetRate();
+	}
+
+	void sendDataToDriverStation() {
+		frc::SmartDashboard::PutNumber("shooter encoder rate",
+				shooterEncoderRate);
+	}
+
+
+
 	void RobotInit() {
 		chooser.AddDefault(autoNameDefault, autoNameDefault);
 		chooser.AddObject(autoNameCustom, autoNameCustom);
 		frc::SmartDashboard::PutData("Auto Modes", &chooser);
 		//CameraServer::GetInstance()->StartAutomaticCapture();
+
+		//Declare Varibles
+		shooter = new TalonSRX(9);
+		agitator = new TalonSRX(7);
+		winch = new TalonSRX(4);
+
+		//Init Varibles
+
+		shooterEncoder = new Encoder(shooterEncoderChannelA,
+		shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
+		shooterEncoder->SetMaxPeriod(.1);
+		shooterEncoder->SetMinRate(10);
+		shooterEncoder->SetDistancePerPulse(.001);
+		shooterEncoder->SetReverseDirection(true);
+		shooterEncoder->SetSamplesToAverage(7);
 	}
 
 	/*
@@ -46,9 +123,9 @@ public:
 
 	void AutonomousPeriodic() {
 		/* This method is called each time the robot receives a
-			* packet instructing the robot to be in Autonomous Enabled mode (approximately every 20ms)
-			* This means that code in this method should return in 20 ms or less (no delays or loops)
-			*/
+		 * packet instructing the robot to be in Autonomous Enabled mode (approximately every 20ms)
+		 * This means that code in this method should return in 20 ms or less (no delays or loops)
+		 */
 		if (autoSelected == autoNameCustom) {
 			// Custom Auto goes here
 		} else {
@@ -74,21 +151,25 @@ public:
 		/* The TeleopPeriodic method is called each time the robot recieves a packet instructing it
 		 * to be in teleoperated mode
 		 */
-		robotDrive.MecanumDrive_Cartesian((joystick.GetZ()), (joystick.GetY()),
-							(joystick.GetX()));
-
-
+		pollSensors();
+		drive();
+		sendDataToDriverStation();
 	}
 
 	void TestPeriodic() { // only runs if robot is in test mode
 		lw->Run();
+		pollSensors();
+		drive();
+		run_shooter();
+		sendDataToDriverStation();
+		// get encoder values and send them to the dashboard
 	}
 
 private:
 	frc::LiveWindow* lw = LiveWindow::GetInstance(); // this is for testing
 	frc::SendableChooser<std::string> chooser;
-	const std::string autoNameDefault = "Default";
-	const std::string autoNameCustom = "My Auto";
+	const std::string autoNameDefault = "auto 1";
+	const std::string autoNameCustom = "auto 2";
 	std::string autoSelected;
 
 	// Channels for the wheels
@@ -112,7 +193,38 @@ private:
 	 *
 	 ********************************************************/
 	frc::Joystick joystick { kJoystickChannel };
+	double jX;
+	double jY;
+	double jZ;
+	double jDead = 0.1;
+	double jDeadZ = 0.04;
+	frc::Joystick joystick2 { kJoystickChannel2 };
+	double j2X;
+	double j2Y;
+	double j2Z;
+	double j2Dead = 0.1;
+	double j2DeadZ = 0.04;
+
+	Encoder *shooterEncoder;
+	static const int shooterEncoderChannelA = 0;
+	static const int shooterEncoderChannelB = 1;
+	double shooterEncoderRate; // encoder rate value, is updated ONLY in pollSensors, and ONLY sent to dashboard in sendDataToDriverStation.
+
+	TalonSRX *shooter;
+	TalonSRX *agitator;
+	TalonSRX *winch;
+
+	enum shooterLevel {sl_slow,sl_normal,sl_full};
 
 };
 
-START_ROBOT_CLASS(Robot)
+START_ROBOT_CLASS(Robot);
+
+/* IMPORTANT NOTES
+ * If the build fails, try re-indexing (re-building) the code.
+ * That will be an issue when pulling updates from the repo.
+ *
+ *
+ * WHEN COMMITING CODE, CLEAN PROJECT FIRST
+ *
+ * */
