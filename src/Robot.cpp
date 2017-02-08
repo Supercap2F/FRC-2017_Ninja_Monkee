@@ -245,6 +245,12 @@ START_ROBOT_CLASS(Robot);
  *
  * WHEN COMMITING CODE, CLEAN PROJECT FIRST
  *
+ *GITHUB IMPORTANT!
+ * Index files you want to sync (one time) (Right click file -> Team -> Add to Index) (Mostly for new files)
+ *
+ * !!-Steps to Git Push from eclipse-!!
+ * Commit (Right click project -> Team -> Commit) or (Ctr + Shift + 3(#)) Make sure to select file to commit(staging) !! DO NOT SELECT "COMMIT AND PUSH"
+ * To Push (Right click project -> Team -> Repository -> Make sure to check "Force overwrite of branch on remote if it exists and has diverged" -> Then continue with submission.
  *
  * */
 
@@ -266,4 +272,6 @@ START_ROBOT_CLASS(Robot);
  *   high   (toggle) ->
  *  Winch: (when pressed) ->
  *  Drop: (one time toggle, default state false/up) ->
+ *
+ *  Grady Clark: drive speeds done
  */
