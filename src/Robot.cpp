@@ -17,34 +17,40 @@
 
 class Robot: public frc::IterativeRobot {
 public:
-	void drive(double x, double y, double z, double gyro=0) {
-		if(gamepad.GetRawButton(1)){
-			robotDrive.MecanumDrive_Cartesian(-x/.77,y/.77,z/.77,gyro);
-		}else{
-			switch(driveLevel){
-				case(full):
-					robotDrive.MecanumDrive_Cartesian(-x,y,z,gyro);
-					break;
-				default:
-					robotDrive.MecanumDrive_Cartesian(-x/.66,y/.66,z/.66,gyro);
-					break;
+	void drive(double x, double y, double z, double gyro = 0) {
+		if (gamepad.GetRawButton(1)) { //Override
+			x = (x / 1) * driveSlow;
+			y = (y / 1) * driveSlow;
+			z = (z / 1) * driveSlow;
+		} else {
+			switch (driveLevel) {
+			case (full):
+				break;
+			default:
+				x = (x / 1) * driveNormal;
+				y = (y / 1) * driveNormal;
+				z = (z / 1) * driveNormal;
+				break;
 			}
 		}
+		robotDrive.MecanumDrive_Cartesian(-x, y, z, gyro);
+		frc::SmartDashboard::PutNumber("x", x);
+		frc::SmartDashboard::PutNumber("y", y);
+		frc::SmartDashboard::PutNumber("z", z);
 	}
 
 	void run_shooter() {
 		shooter->Set(0);
 
-
 	}
 
-	void pollControllers(){
+	void pollControllers() {
 		double leftdead = .4;
 		double rightdead = .4;
 		if (gamepad.GetX() > leftdead || gamepad.GetX() < -leftdead) {
 			strafe = gamepad.GetX();
 		} else {
-			 strafe = gamepad.GetX();
+			strafe = gamepad.GetX();
 		}
 		if (gamepad.GetY() > leftdead || gamepad.GetY() < -leftdead) {
 			forwardBackward = gamepad.GetY();
@@ -56,13 +62,16 @@ public:
 		} else {
 			turn = gamepad.GetZ();
 		}
-
-		if(gamepad.GetRawButton(2)){
-			driveLevel=full;
-		}else{
-			driveLevel=normal;
+		if (gamepad.GetRawButton(2) != btn_driveToggle) {
+			btn_driveToggle=!btn_driveToggle;
+			if (btn_driveToggle == true) {
+				if (driveLevel == full) {
+					driveLevel = normal;
+				} else {
+					driveLevel = full;
+				}
+			}
 		}
-
 	}
 
 	void pollSensors() {
@@ -72,15 +81,10 @@ public:
 	void sendDataToDriverStation() {
 		frc::SmartDashboard::PutNumber("shooter encoder rate",
 				shooterEncoderRate);
-		frc::SmartDashboard::PutNumber("forward backward",
-						forwardBackward);
-		frc::SmartDashboard::PutNumber("strafe",
-						strafe);
-		frc::SmartDashboard::PutNumber("turn ",
-						turn);
+		frc::SmartDashboard::PutNumber("forward backward", forwardBackward);
+		frc::SmartDashboard::PutNumber("strafe", strafe);
+		frc::SmartDashboard::PutNumber("turn ", turn);
 	}
-
-
 
 	void RobotInit() {
 		chooser.AddDefault(autoNameDefault, autoNameDefault);
@@ -96,7 +100,7 @@ public:
 		//Init Varibles
 
 		shooterEncoder = new Encoder(shooterEncoderChannelA,
-		shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
+				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
 		shooterEncoder->SetMaxPeriod(.1);
 		shooterEncoder->SetMinRate(10);
 		shooterEncoder->SetDistancePerPulse(.001);
@@ -143,7 +147,7 @@ public:
 		/* The TeleopInit method is called once each time the robot enters teleoperated mode
 		 *  This is where you would put presets for the teleoperated mode.
 		 */
-		robotDrive.SetExpiration(0.1);
+		robotDrive.SetExpiration(0.3);
 
 		// Invert the left side motors
 		robotDrive.SetInvertedMotor(RobotDrive::kFrontLeftMotor, true);
@@ -157,11 +161,15 @@ public:
 		/* The TeleopPeriodic method is called each time the robot recieves a packet instructing it
 		 * to be in teleoperated mode
 		 */
-		pollControllers();
-		pollSensors();
-		drive(strafe,forwardBackward,turn,0);
-		run_shooter();
-		sendDataToDriverStation();
+		uint8_t ticks = ++teleopTicks;
+		if (ticks > 0) {
+			pollControllers();
+			pollSensors();
+			drive(strafe, forwardBackward, turn, 0);
+			run_shooter();
+			sendDataToDriverStation();
+			ticks = 0;
+		}
 	}
 
 	void TestPeriodic() { // only runs if robot is in test mode
@@ -199,8 +207,7 @@ private:
 	//drive vars
 	double forwardBackward;
 	double turn;
-	double strafe;
-	bool shoot = false;
+	double strafe;bool shoot = false;
 
 	frc::Joystick gamepad { kXboxChannel };
 
@@ -213,10 +220,19 @@ private:
 	TalonSRX *agitator;
 	TalonSRX *winch;
 
-	enum speedLevels {slow,normal,full};
+	double driveSlow = .3;
+	double driveNormal = .6;
+	double driveFull = 1;
+
+	enum speedLevels {
+		slow, normal, full
+	};
 	speedLevels driveLevel = normal;
 	speedLevels shooterLevel = normal;
 
+	//Gamepad
+	bool btn_driveToggle = false;
+	uint8_t teleopTicks;
 
 };
 
@@ -230,7 +246,6 @@ START_ROBOT_CLASS(Robot);
  * WHEN COMMITING CODE, CLEAN PROJECT FIRST
  *
  * */
-
 
 /*
  * Layout: (No joystick only game pads)
