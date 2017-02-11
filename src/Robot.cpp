@@ -18,7 +18,7 @@
 class Robot: public frc::IterativeRobot {
 public:
 	void drive(double x, double y, double z, double gyro = 0) {
-		if (gamepad.GetRawButton(1)) { //Override
+		if (driveOverride) { //Override
 			x = (x / 1) * driveSlow;
 			y = (y / 1) * driveSlow;
 			z = (z / 1) * driveSlow;
@@ -40,11 +40,25 @@ public:
 	}
 
 	void run_shooter() {
-		shooter->Set(0);
+		switch (shooterLevel) {
+		case (slow):
+			shooter->Set(shooterSlow);
+			break;
+		case (normal):
+			shooter->Set(shooterNormal);
+			break;
+		case (full):
+			shooter->Set(shooterFull);
+			break;
+		default:
+			shooter->Set(0);
+			break;
+		}
 
 	}
 
 	void pollControllers() {
+		//gamepad: Drive control polling
 		double leftdead = .4;
 		double rightdead = .4;
 		if (gamepad.GetX() > leftdead || gamepad.GetX() < -leftdead) {
@@ -62,8 +76,9 @@ public:
 		} else {
 			turn = gamepad.GetZ();
 		}
-		if (gamepad.GetRawButton(2) != btn_driveToggle) {
-			btn_driveToggle=!btn_driveToggle;
+
+		if (gamepad.GetRawButton(6) != btn_driveToggle) {
+			btn_driveToggle = !btn_driveToggle;
 			if (btn_driveToggle == true) {
 				if (driveLevel == full) {
 					driveLevel = normal;
@@ -71,6 +86,25 @@ public:
 					driveLevel = full;
 				}
 			}
+		}
+		if (gamepad.GetRawButton(5)) {
+			driveOverride = true;
+		}else{
+			driveOverride = false;
+		}
+
+		//button panel: Shooter control polling
+		bool bslow = panel.GetRawButton(1),
+			bnormal = panel.GetRawButton(2),
+			bfull = panel.GetRawButton(3);
+		if (bslow == true && shooterLevel != slow) {
+			shooterLevel = slow;
+		} else if (bnormal == true && shooterLevel != normal) {
+			shooterLevel = normal;
+		} else if (bfull == true && shooterLevel != full) {
+			shooterLevel = full;
+		} else if (!bslow && !bnormal && !bfull && shooterLevel != stop) {
+			shooterLevel = stop;
 		}
 	}
 
@@ -84,6 +118,8 @@ public:
 		frc::SmartDashboard::PutNumber("forward backward", forwardBackward);
 		frc::SmartDashboard::PutNumber("strafe", strafe);
 		frc::SmartDashboard::PutNumber("turn ", turn);
+		frc::SmartDashboard::PutNumber("shooterLevel", shooterLevel);
+		frc::SmartDashboard::PutNumber("driveLevel", driveLevel);
 	}
 
 	void RobotInit() {
@@ -121,7 +157,7 @@ public:
 	 */
 	void AutonomousInit() override { //This method is called once each time the robot enters Autonomous
 		autoSelected = chooser.GetSelected();
-		// std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
+		//std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
 		std::cout << "Auto selected: " << autoSelected << std::endl;
 
 		if (autoSelected == autoNameCustom) {
@@ -189,10 +225,11 @@ private:
 	static constexpr int kRearLeftChannel = 2;
 	static constexpr int kFrontRightChannel = 1;
 	static constexpr int kRearRightChannel = 3;
-
+	/*
 	static constexpr int kJoystickChannel = 2;
 	static constexpr int kJoystickChannel2 = 1;
 	static constexpr int kXboxChannel = 0;
+	*/
 
 	// Robot drive system
 	frc::RobotDrive robotDrive { kFrontLeftChannel, kRearLeftChannel,
@@ -209,7 +246,8 @@ private:
 	double turn;
 	double strafe;bool shoot = false;
 
-	frc::Joystick gamepad { kXboxChannel };
+	frc::Joystick gamepad { 0 };
+	frc::Joystick panel { 1 };
 
 	Encoder *shooterEncoder;
 	static const int shooterEncoderChannelA = 0;
@@ -220,18 +258,18 @@ private:
 	TalonSRX *agitator;
 	TalonSRX *winch;
 
-	double driveSlow = .3;
-	double driveNormal = .6;
-	double driveFull = 1;
+	double driveSlow = .3, driveNormal = .6, driveFull = 1;
 
 	enum speedLevels {
-		slow, normal, full
+		stop, slow, normal, full
 	};
-	speedLevels driveLevel = normal;
-	speedLevels shooterLevel = normal;
+	speedLevels driveLevel = normal, shooterLevel = normal;
+
+	//shooter speeds
+	uint8_t shooterSlow = .3, shooterNormal = .5, shooterFull = 1;
 
 	//Gamepad
-	bool btn_driveToggle = false;
+	bool btn_driveToggle = false, btn_shooterToggle = false, driveOverride=false;
 	uint8_t teleopTicks;
 
 };
@@ -261,17 +299,20 @@ START_ROBOT_CLASS(Robot);
  *  Strafe Left/Right -> Left stick horazontal
  *  Turn left/Right   -> Right stick verticle
  *
- * Controler: Button Pad
+ * Controls
  *  Shooter speed: (when pressed)
- *   low    ->
- *   normal ->
- *   high   ->
+ *   stop   -> no below input
+ *   low    -> panel btn 1 (label: up)
+ *   normal -> panel btn 2 (label: mid)
+ *   high   -> panel btn 3 (label: dwn)
  *  Drive speed: (when pressed)
- *   low             ->
- *   normal (toggle) ->
- *   high   (toggle) ->
+ *   low             -> gamepad btn 5 (left bumper)
+ *   normal (toggle) -> gamepad btn 6 (right bumper)
+ *   high   (toggle) -> gamepad btn 6 (right bumper)
  *  Winch: (when pressed) ->
  *  Drop: (one time toggle, default state false/up) ->
  *
- *  Grady Clark: drive speeds done
+ *	!-COMPLETED-!
+ *  Drive speeds done (gamepad)
+ *  Shooter speeds done. (panel)
  */
