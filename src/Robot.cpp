@@ -14,6 +14,7 @@
 
 #include <Encoder.h>
 #include <TalonSRX.h>
+#include <I2c.h>
 
 class Robot: public frc::IterativeRobot {
 public:
@@ -57,6 +58,14 @@ public:
 
 	}
 
+	void run_winch() {
+		if (runWinch) {
+			winch->Set(0.5);
+		} else {
+			winch->Set(0);
+		}
+	}
+
 	void pollControllers() {
 		//gamepad: Drive control polling
 		double leftdead = .4;
@@ -89,14 +98,13 @@ public:
 		}
 		if (gamepad.GetRawButton(5)) {
 			driveOverride = true;
-		}else{
+		} else {
 			driveOverride = false;
 		}
 
 		//button panel: Shooter control polling
-		bool bslow = panel.GetRawButton(1),
-			bnormal = panel.GetRawButton(2),
-			bfull = panel.GetRawButton(3);
+		bool bslow = panel.GetRawButton(1), bnormal = panel.GetRawButton(2),
+				bfull = panel.GetRawButton(3);
 		if (bslow == true && shooterLevel != slow) {
 			shooterLevel = slow;
 		} else if (bnormal == true && shooterLevel != normal) {
@@ -106,6 +114,14 @@ public:
 		} else if (!bslow && !bnormal && !bfull && shooterLevel != stop) {
 			shooterLevel = stop;
 		}
+
+		// winch control polling
+		if (panel.GetRawButton(4)) {
+			runWinch = true;
+		} else {
+			runWinch = false;
+		}
+
 	}
 
 	void pollSensors() {
@@ -120,28 +136,7 @@ public:
 		frc::SmartDashboard::PutNumber("turn ", turn);
 		frc::SmartDashboard::PutNumber("shooterLevel", shooterLevel);
 		frc::SmartDashboard::PutNumber("driveLevel", driveLevel);
-	}
-
-	void RobotInit() {
-		chooser.AddDefault(autoNameDefault, autoNameDefault);
-		chooser.AddObject(autoNameCustom, autoNameCustom);
-		frc::SmartDashboard::PutData("Auto Modes", &chooser);
-		//CameraServer::GetInstance()->StartAutomaticCapture();
-
-		//Declare Varibles
-		shooter = new TalonSRX(9);
-		agitator = new TalonSRX(7);
-		winch = new TalonSRX(4);
-
-		//Init Varibles
-
-		shooterEncoder = new Encoder(shooterEncoderChannelA,
-				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
-		shooterEncoder->SetMaxPeriod(.1);
-		shooterEncoder->SetMinRate(10);
-		shooterEncoder->SetDistancePerPulse(.001);
-		shooterEncoder->SetReverseDirection(true);
-		shooterEncoder->SetSamplesToAverage(7);
+		//frc::SmartDashboard::PutNumber("VR", table->GetNumber("cx"));
 	}
 
 	/*
@@ -203,6 +198,7 @@ public:
 			pollSensors();
 			drive(strafe, forwardBackward, turn, 0);
 			run_shooter();
+			run_winch();
 			sendDataToDriverStation();
 			ticks = 0;
 		}
@@ -210,7 +206,33 @@ public:
 
 	void TestPeriodic() { // only runs if robot is in test mode
 		lw->Run();
+
 		// get encoder values and send them to the dashboard
+	}
+
+	void RobotInit() {
+		chooser.AddDefault(autoNameDefault, autoNameDefault);
+		chooser.AddObject(autoNameCustom, autoNameCustom);
+		frc::SmartDashboard::PutData("Auto Modes", &chooser);
+		//CameraServer::GetInstance()->StartAutomaticCapture();
+
+		//Declare Varibles
+		shooter = new TalonSRX(9);
+		agitator = new TalonSRX(7);
+		winch = new TalonSRX(4);
+
+		//Init Varibles
+
+		shooterEncoder = new Encoder(shooterEncoderChannelA,
+				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
+		shooterEncoder->SetMaxPeriod(.1);
+		shooterEncoder->SetMinRate(10);
+		shooterEncoder->SetDistancePerPulse(.001);
+		shooterEncoder->SetReverseDirection(true);
+		shooterEncoder->SetSamplesToAverage(7);
+		table = NetworkTable::GetTable("SmartDashboard");
+		NetworkTable::GlobalDeleteAll();
+		table->PutBoolean("I AM ALIVE",true);
 	}
 
 private:
@@ -226,10 +248,10 @@ private:
 	static constexpr int kFrontRightChannel = 1;
 	static constexpr int kRearRightChannel = 3;
 	/*
-	static constexpr int kJoystickChannel = 2;
-	static constexpr int kJoystickChannel2 = 1;
-	static constexpr int kXboxChannel = 0;
-	*/
+	 static constexpr int kJoystickChannel = 2;
+	 static constexpr int kJoystickChannel2 = 1;
+	 static constexpr int kXboxChannel = 0;
+	 */
 
 	// Robot drive system
 	frc::RobotDrive robotDrive { kFrontLeftChannel, kRearLeftChannel,
@@ -269,9 +291,14 @@ private:
 	uint8_t shooterSlow = .3, shooterNormal = .5, shooterFull = 1;
 
 	//Gamepad
-	bool btn_driveToggle = false, btn_shooterToggle = false, driveOverride=false;
+	bool btn_driveToggle = false, btn_shooterToggle = false, driveOverride =
+			false;
 	uint8_t teleopTicks;
 
+	// Panel
+	bool runWinch = false;
+
+	std::shared_ptr<NetworkTable> table;
 };
 
 START_ROBOT_CLASS(Robot);
@@ -288,7 +315,7 @@ START_ROBOT_CLASS(Robot);
  *
  * !!-Steps to Git Push from eclipse-!!
  * Commit (Right click project -> Team -> Commit) or (Ctr + Shift + 3(#)) Make sure to select file to commit(staging) !! DO NOT SELECT "COMMIT AND PUSH"
- * To Push (Right click project -> Team -> Repository -> Make sure to check "Force overwrite of branch on remote if it exists and has diverged" -> Then continue with submission.
+ * To Push (Right click project -> Team -> Push Branch master -> Make sure to check "Force overwrite of branch on remote if it exists and has diverged" -> Then continue with submission.
  *
  * */
 
@@ -309,7 +336,7 @@ START_ROBOT_CLASS(Robot);
  *   low             -> gamepad btn 5 (left bumper)
  *   normal (toggle) -> gamepad btn 6 (right bumper)
  *   high   (toggle) -> gamepad btn 6 (right bumper)
- *  Winch: (when pressed) ->
+ *  Winch: (when pressed) -> panel btn 4
  *  Drop: (one time toggle, default state false/up) ->
  *
  *	!-COMPLETED-!
