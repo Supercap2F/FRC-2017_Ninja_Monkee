@@ -16,6 +16,8 @@
 #include <TalonSRX.h>
 #include <I2c.h>
 
+#include <CANTalon.h>
+
 class Robot: public frc::IterativeRobot {
 public:
 	void drive(double x, double y, double z, double gyro = 0) {
@@ -35,27 +37,29 @@ public:
 			}
 		}
 		robotDrive.MecanumDrive_Cartesian(-x, y, z, gyro);
-		frc::SmartDashboard::PutNumber("x", x);
-		frc::SmartDashboard::PutNumber("y", y);
-		frc::SmartDashboard::PutNumber("z", z);
+		//frc::SmartDashboard::PutNumber("x", x);
+		//frc::SmartDashboard::PutNumber("y", y);
+		//frc::SmartDashboard::PutNumber("z", z);
 	}
 
 	void run_shooter() {
+		double shooterSpeed = 0;
 		switch (shooterLevel) {
 		case (slow):
-			shooter->Set(shooterSlow);
+			shooterSpeed = shooterSlow;
 			break;
 		case (normal):
-			shooter->Set(shooterNormal);
+			shooterSpeed = shooterNormal;
 			break;
 		case (full):
-			shooter->Set(shooterFull);
+			shooterSpeed = shooterFull;
 			break;
 		default:
-			shooter->Set(0);
+			shooterSpeed = 0;
 			break;
 		}
-
+		//frc::SmartDashboard::PutNumber("shooter speed", shooterSpeed);
+		shooter.Set(shooterSpeed);
 	}
 
 	void run_winch() {
@@ -103,8 +107,8 @@ public:
 		}
 
 		//button panel: Shooter control polling
-		bool bslow = panel.GetRawButton(1), bnormal = panel.GetRawButton(2),
-				bfull = panel.GetRawButton(3);
+		bool bslow = panel.GetRawButton(3), bnormal = panel.GetRawButton(2),
+				bfull = panel.GetRawButton(1);
 		if (bslow == true && shooterLevel != slow) {
 			shooterLevel = slow;
 		} else if (bnormal == true && shooterLevel != normal) {
@@ -136,6 +140,8 @@ public:
 		frc::SmartDashboard::PutNumber("turn ", turn);
 		frc::SmartDashboard::PutNumber("shooterLevel", shooterLevel);
 		frc::SmartDashboard::PutNumber("driveLevel", driveLevel);
+		frc::SmartDashboard::PutNumber("shooter pos", shooter.GetEncPosition());
+		frc::SmartDashboard::PutNumber("shooter vel", shooter.GetEncVel());
 		//frc::SmartDashboard::PutNumber("VR", table->GetNumber("cx"));
 	}
 
@@ -217,7 +223,6 @@ public:
 		//CameraServer::GetInstance()->StartAutomaticCapture();
 
 		//Declare Varibles
-		shooter = new TalonSRX(9);
 		agitator = new TalonSRX(7);
 		winch = new TalonSRX(4);
 
@@ -225,14 +230,21 @@ public:
 
 		shooterEncoder = new Encoder(shooterEncoderChannelA,
 				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
+		shooter.SetControlMode(frc::CANSpeedController::ControlMode::kPercentVbus);
 		shooterEncoder->SetMaxPeriod(.1);
 		shooterEncoder->SetMinRate(10);
-		shooterEncoder->SetDistancePerPulse(.001);
+		shooterEncoder->SetDistancePerPulse(.0001);
 		shooterEncoder->SetReverseDirection(true);
 		shooterEncoder->SetSamplesToAverage(7);
 		table = NetworkTable::GetTable("SmartDashboard");
 		NetworkTable::GlobalDeleteAll();
-		table->PutBoolean("I AM ALIVE",true);
+
+		shooter.SetFeedbackDevice(CANTalon::FeedbackDevice::CtreMagEncoder_Relative);
+		shooter.ConfigNominalOutputVoltage(+0.0f,-0.0f);
+		shooter.ConfigPeakOutputVoltage(+12.0f,-12.0f);
+		shooter.SetEncPosition(0);
+		sendDataToDriverStation();
+		//frc::SmartDashboard::PutNumber("!-!",frc::SmartDashboard::GetNumber("Shooter full",-1)); //TODO: FIX THIS
 	}
 
 private:
@@ -275,12 +287,12 @@ private:
 	static const int shooterEncoderChannelA = 0;
 	static const int shooterEncoderChannelB = 1;
 	double shooterEncoderRate; // encoder rate value, is updated ONLY in pollSensors, and ONLY sent to dashboard in sendDataToDriverStation.
-
-	TalonSRX *shooter;
 	TalonSRX *agitator;
 	TalonSRX *winch;
 
-	double driveSlow = .3, driveNormal = .6, driveFull = 1;
+	CANTalon shooter {1}; // id of the device is zero
+
+	double driveSlow = 0.3, driveNormal = 0.6, driveFull = 1;
 
 	enum speedLevels {
 		stop, slow, normal, full
@@ -288,7 +300,7 @@ private:
 	speedLevels driveLevel = normal, shooterLevel = normal;
 
 	//shooter speeds
-	uint8_t shooterSlow = .3, shooterNormal = .5, shooterFull = 1;
+	double shooterSlow = .3, shooterNormal = .5, shooterFull = 1;
 
 	//Gamepad
 	bool btn_driveToggle = false, btn_shooterToggle = false, driveOverride =
@@ -329,7 +341,7 @@ START_ROBOT_CLASS(Robot);
  * Controls
  *  Shooter speed: (when pressed)
  *   stop   -> no below input
- *   low    -> panel btn 1 (label: up)
+ *   low    -> panel btn 1 (label: HI)
  *   normal -> panel btn 2 (label: mid)
  *   high   -> panel btn 3 (label: dwn)
  *  Drive speed: (when pressed)
@@ -342,4 +354,5 @@ START_ROBOT_CLASS(Robot);
  *	!-COMPLETED-!
  *  Drive speeds done (gamepad)
  *  Shooter speeds done. (panel)
+ *  Shooter encoder done.
  */
