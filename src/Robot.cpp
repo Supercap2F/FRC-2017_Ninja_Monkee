@@ -1,6 +1,8 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <fstream>
+#include <stdlib.h>
 
 #include <IterativeRobot.h>
 #include <LiveWindow/LiveWindow.h>
@@ -20,26 +22,42 @@
 
 class Robot: public frc::IterativeRobot {
 public:
+	/* x = strafe
+	 * y = forward/backward
+	 * z = turn
+	 * gyro = gyro
+	*/
 	void drive(double x, double y, double z, double gyro = 0) {
-		if (driveOverride) { //Override
+		switch (driveLevel) {
+		case (full):
+			break;
+		case (slow):
 			x = (x / 1) * driveSlow;
 			y = (y / 1) * driveSlow;
 			z = (z / 1) * driveSlow;
-		} else {
-			switch (driveLevel) {
-			case (full):
-				break;
-			default:
-				x = (x / 1) * driveNormal;
-				y = (y / 1) * driveNormal;
-				z = (z / 1) * driveNormal;
-				break;
-			}
+			break;
+		case (normal):
+			x = (x / 1) * driveNormal;
+			y = (y / 1) * driveNormal;
+			z = (z / 1) * driveNormal;
+			break;
+		default:
+			x=0;
+			y=0;
+			z=0;
 		}
-		robotDrive.MecanumDrive_Cartesian(-x, y, z, gyro);
-		//frc::SmartDashboard::PutNumber("x", x);
-		//frc::SmartDashboard::PutNumber("y", y);
-		//frc::SmartDashboard::PutNumber("z", z);
+		robotDrive.MecanumDrive_Cartesian(x, y, z, gyro);
+		frc::SmartDashboard::PutNumber("x", x);
+		frc::SmartDashboard::PutNumber("y", y);
+		frc::SmartDashboard::PutNumber("z", z);
+	}
+
+	void run_agitator() {
+		if (runAgitator) {
+			agitator->Set(1);
+		} else {
+			agitator->Set(0);
+		}
 	}
 
 	void run_shooter() {
@@ -64,47 +82,80 @@ public:
 
 	void run_winch() {
 		if (runWinch) {
-			winch->Set(0.5);
+			winch->Set(1);
 		} else {
 			winch->Set(0);
 		}
 	}
 
+	void getShooterConfig() {
+		int temp = frc::SmartDashboard::GetNumber("shooterFull", -1);
+		if (temp >= 0 && temp != shooterFull) {
+			shooterFull = temp;
+			std::ofstream file(pathShooterFull);
+			file << temp;
+			file.close();
+		}
+
+		temp = frc::SmartDashboard::GetNumber("shooterNormal", -1);
+		if (temp >= 0 && temp != shooterNormal) {
+			shooterNormal = temp;
+			std::ofstream file(pathShooterNormal);
+			file << temp;
+			file.close();
+		}
+
+		temp = frc::SmartDashboard::GetNumber("shooterSlow", -1);
+		if (temp >= 0 && temp != shooterSlow) {
+			shooterSlow = temp;
+			std::ofstream file(pathShooterSlow);
+			file << temp;
+			file.close();
+		}
+	}
+
 	void pollControllers() {
 		//gamepad: Drive control polling
-		double leftdead = .4;
-		double rightdead = .4;
+		double leftdead = .1;
+		double rightdead = .1;
 		if (gamepad.GetX() > leftdead || gamepad.GetX() < -leftdead) {
 			strafe = gamepad.GetX();
 		} else {
-			strafe = gamepad.GetX();
+			strafe = 0;
 		}
 		if (gamepad.GetY() > leftdead || gamepad.GetY() < -leftdead) {
 			forwardBackward = gamepad.GetY();
 		} else {
-			forwardBackward = gamepad.GetY();
+			forwardBackward = 0;
 		}
 		if (gamepad.GetZ() > rightdead || gamepad.GetZ() < -rightdead) {
 			turn = gamepad.GetZ();
 		} else {
-			turn = gamepad.GetZ();
+			turn = 0;
 		}
-
-		if (gamepad.GetRawButton(6) != btn_driveToggle) {
-			btn_driveToggle = !btn_driveToggle;
-			if (btn_driveToggle == true) {
-				if (driveLevel == full) {
-					driveLevel = normal;
-				} else {
-					driveLevel = full;
-				}
+		if (gamepad.GetRawButton(7)) { // Drive override
+			if(driveLevel != slow){
+				driveLevel = slow;
+			}
+		} else {
+			if (gamepad.GetRawButton(6) && driveLevel != full) {
+				driveLevel = full;
+			} else if (gamepad.GetRawButton(8) && driveLevel != normal) {
+				driveLevel = normal;
 			}
 		}
-		if (gamepad.GetRawButton(5)) {
-			driveOverride = true;
-		} else {
-			driveOverride = false;
-		}
+		/*
+		 if (gamepad.GetRawButton(6) != btn_driveToggle) {
+		 btn_driveToggle = !btn_driveToggle;
+		 if (btn_driveToggle == true) {
+		 if (driveLevel == full) {
+		 driveLevel = normal;
+		 } else {
+		 driveLevel = full;
+		 }
+		 }
+		 }
+		 */
 
 		//button panel: Shooter control polling
 		bool bslow = panel.GetRawButton(3), bnormal = panel.GetRawButton(2),
@@ -119,13 +170,8 @@ public:
 			shooterLevel = stop;
 		}
 
-		// winch control polling
-		if (panel.GetRawButton(4)) {
-			runWinch = true;
-		} else {
-			runWinch = false;
-		}
-
+		// agitator control polling
+		runAgitator = panel.GetRawButton(6);
 	}
 
 	void pollSensors() {
@@ -139,9 +185,12 @@ public:
 		frc::SmartDashboard::PutNumber("strafe", strafe);
 		frc::SmartDashboard::PutNumber("turn ", turn);
 		frc::SmartDashboard::PutNumber("shooterLevel", shooterLevel);
-		frc::SmartDashboard::PutNumber("driveLevel", driveLevel);
+		frc::SmartDashboard::PutBoolean("driveLevelFull", driveLevel == full);
+		frc::SmartDashboard::PutBoolean("driveLevelNormal", driveLevel == normal);
+		frc::SmartDashboard::PutBoolean("driveLevelSlow", driveLevel == slow);
+		frc::SmartDashboard::PutBoolean("Button 0", driveLevel == slow);
 		frc::SmartDashboard::PutNumber("shooter pos", shooter.GetEncPosition());
-		frc::SmartDashboard::PutNumber("shooter vel", shooter.GetEncVel());
+		frc::SmartDashboard::PutBoolean("shooter vel", shooter.GetEncVel());
 		//frc::SmartDashboard::PutNumber("VR", table->GetNumber("cx"));
 	}
 
@@ -207,6 +256,7 @@ public:
 			run_winch();
 			sendDataToDriverStation();
 			ticks = 0;
+			getShooterConfig();
 		}
 	}
 
@@ -223,14 +273,14 @@ public:
 		//CameraServer::GetInstance()->StartAutomaticCapture();
 
 		//Declare Varibles
-		agitator = new TalonSRX(7);
+		agitator = new TalonSRX(5);
 		winch = new TalonSRX(4);
 
 		//Init Varibles
 
 		shooterEncoder = new Encoder(shooterEncoderChannelA,
 				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
-		shooter.SetControlMode(frc::CANSpeedController::ControlMode::kPercentVbus);
+		shooter.SetControlMode(frc::CANSpeedController::ControlMode::kSpeed);
 		shooterEncoder->SetMaxPeriod(.1);
 		shooterEncoder->SetMinRate(10);
 		shooterEncoder->SetDistancePerPulse(.0001);
@@ -239,11 +289,36 @@ public:
 		table = NetworkTable::GetTable("SmartDashboard");
 		NetworkTable::GlobalDeleteAll();
 
-		shooter.SetFeedbackDevice(CANTalon::FeedbackDevice::CtreMagEncoder_Relative);
-		shooter.ConfigNominalOutputVoltage(+0.0f,-0.0f);
-		shooter.ConfigPeakOutputVoltage(+12.0f,-12.0f);
+		shooter.SetFeedbackDevice(
+				CANTalon::FeedbackDevice::CtreMagEncoder_Relative);
+		shooter.ConfigNominalOutputVoltage(+0.0f, -0.0f);
+		shooter.ConfigPeakOutputVoltage(+12.0f, -12.0f);
 		shooter.SetEncPosition(0);
 		sendDataToDriverStation();
+		{
+			std::ifstream file(pathShooterFull);
+			std::string temp;
+			getline(file, temp);
+			file.close();
+			shooterFull = atoi(temp.c_str());
+		}
+		{
+			std::ifstream file(pathShooterNormal);
+			std::string temp;
+			getline(file, temp);
+			file.close();
+			shooterNormal = atoi(temp.c_str());
+		}
+		{
+			std::ifstream file(pathShooterSlow);
+			std::string temp;
+			getline(file, temp);
+			file.close();
+			shooterSlow = atoi(temp.c_str());
+		}
+		frc::SmartDashboard::PutNumber("shooterFull", shooterFull);
+		frc::SmartDashboard::PutNumber("shooterNormal", shooterNormal);
+		frc::SmartDashboard::PutNumber("shooterSlow", shooterSlow);
 		//frc::SmartDashboard::PutNumber("!-!",frc::SmartDashboard::GetNumber("Shooter full",-1)); //TODO: FIX THIS
 	}
 
@@ -290,7 +365,7 @@ private:
 	TalonSRX *agitator;
 	TalonSRX *winch;
 
-	CANTalon shooter {1}; // id of the device is zero
+	CANTalon shooter { 1 }; // id of the device is zero
 
 	double driveSlow = 0.3, driveNormal = 0.6, driveFull = 1;
 
@@ -300,17 +375,21 @@ private:
 	speedLevels driveLevel = normal, shooterLevel = normal;
 
 	//shooter speeds
-	double shooterSlow = .3, shooterNormal = .5, shooterFull = 1;
+	int shooterSlow = 2000, shooterNormal = 4000, shooterFull = 8000;
 
 	//Gamepad
-	bool btn_driveToggle = false, btn_shooterToggle = false, driveOverride =
-			false;
+	bool btn_driveToggle = false, btn_shooterToggle = false;
 	uint8_t teleopTicks;
 
 	// Panel
-	bool runWinch = false;
+	bool runWinch = false, runAgitator = false;
 
 	std::shared_ptr<NetworkTable> table;
+
+	std::string pathShooterFull = "/home/lvuser/shooterFull.txt",
+			pathShooterNormal = "/home/lvuser/shooterNormal.txt",
+			pathShooterSlow = "/home/lvuser/shooterSlow.txt";
+
 };
 
 START_ROBOT_CLASS(Robot);
@@ -344,9 +423,9 @@ START_ROBOT_CLASS(Robot);
  *   low    -> panel btn 1 (label: HI)
  *   normal -> panel btn 2 (label: mid)
  *   high   -> panel btn 3 (label: dwn)
- *  Drive speed: (when pressed)
- *   low             -> gamepad btn 5 (left bumper)
- *   normal (toggle) -> gamepad btn 6 (right bumper)
+ *  Drive speed: (toggle)
+ *   low    (toggle) -> gamepad btn 7 (left bumper)
+ *   normal (toggle) -> gamepad btn 8 (right bumper)
  *   high   (toggle) -> gamepad btn 6 (right bumper)
  *  Winch: (when pressed) -> panel btn 4
  *  Drop: (one time toggle, default state false/up) ->
