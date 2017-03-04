@@ -19,32 +19,84 @@
 #include <I2c.h>
 
 #include <CANTalon.h>
+#include <Timer.h>
+#include <Servo.h>
 
 class Robot: public frc::IterativeRobot {
 public:
+
+	class shooterConfig {
+	public:
+		double shooterSlow = 0;
+		double shooterNormal = 0;
+		double shooterFull = 0;
+	};
+
+	class config {
+	public:
+		shooterConfig config_BLUE;
+		shooterConfig config_RED;
+		void loadConfig() {
+			std::string temp;
+			std::ifstream ifile("/home/lvuser/NinjaConfig.txt");
+			if (ifile.good()) {
+				//shooter low configs
+				getline(ifile, temp); // config one RED team
+				config_RED.shooterSlow = atoi(temp.c_str());
+				getline(ifile, temp); // config two BLUE team
+				config_BLUE.shooterSlow = atoi(temp.c_str());
+
+				//shooter normal configs
+				getline(ifile, temp); // config one RED team
+				config_RED.shooterNormal = atoi(temp.c_str());
+				getline(ifile, temp); // config two BLUE team
+				config_BLUE.shooterNormal = atoi(temp.c_str());
+
+				//shooter full configs
+				getline(ifile, temp); // config one RED team
+				config_RED.shooterFull = atoi(temp.c_str());
+				getline(ifile, temp); // config two BLUE team
+				config_BLUE.shooterFull = atoi(temp.c_str());
+			}
+			ifile.close();
+		}
+
+		void saveConfig() {
+			/*
+			 std::ofstream ofile("/home/lvuser/NinjaConfig.txt");
+			 config_RED.shooterSlow+"\n"+config_BLUE.shooterSlow+"\n"+
+			 config_RED.shooterNormal+"\n"+config_BLUE.shooterNormal+"\n"+;
+			 ofile.close();
+			 */
+		}
+	};
+
 	/* x = strafe
 	 * y = forward/backward
 	 * z = turn
 	 * gyro = gyro
-	*/
+	 */
 	void drive(double x, double y, double z, double gyro = 0) {
 		switch (driveLevel) {
-		case (full):
-			break;
 		case (slow):
-			x = (x / 1) * driveSlow;
+			x = (x / 1) * strafeSlow;
 			y = (y / 1) * driveSlow;
 			z = (z / 1) * driveSlow;
 			break;
 		case (normal):
-			x = (x / 1) * driveNormal;
+			x = (x / 1) * strafeNormal;
 			y = (y / 1) * driveNormal;
 			z = (z / 1) * driveNormal;
 			break;
+		case (full):
+			x = (x / 1) * strafeFull;
+			y = (y / 1) * driveFull;
+			z = (z / 1) * driveFull;
+			break;
 		default:
-			x=0;
-			y=0;
-			z=0;
+			x = 0;
+			y = 0;
+			z = 0;
 		}
 		robotDrive.MecanumDrive_Cartesian(x, y, z, gyro);
 		frc::SmartDashboard::PutNumber("x", x);
@@ -52,11 +104,26 @@ public:
 		frc::SmartDashboard::PutNumber("z", z);
 	}
 
+	void updateDrive(double x, double y, double z, double gyro = 0,
+	bool update = true) {
+		if (update) {
+			driveX = x, driveY = y, driveZ = z, driveGyro = gyro;
+		}
+		drive(driveX, driveY, driveZ, driveGyro);
+
+	}
+
 	void run_agitator() {
-		if (runAgitator) {
+		switch (agitatorLevel) {
+		case (normal):
+			agitator->Set(-1);
+			break;
+		case (reverse):
 			agitator->Set(1);
-		} else {
+			break;
+		default:
 			agitator->Set(0);
+			break;
 		}
 	}
 
@@ -64,27 +131,33 @@ public:
 		double shooterSpeed = 0;
 		switch (shooterLevel) {
 		case (slow):
-			shooterSpeed = shooterSlow;
+			shooterSpeed = shooterSlow / 10000;
 			break;
 		case (normal):
-			shooterSpeed = shooterNormal;
+			shooterSpeed = shooterNormal / 10000;
 			break;
 		case (full):
-			shooterSpeed = shooterFull;
+			shooterSpeed = shooterFull / 10000;
+			break;
+		case (reverse):
+			shooterSpeed = -1;
 			break;
 		default:
 			shooterSpeed = 0;
 			break;
 		}
-		//frc::SmartDashboard::PutNumber("shooter speed", shooterSpeed);
+		frc::SmartDashboard::PutNumber("shooter speed", shooterSpeed);
 		shooter.Set(shooterSpeed);
 	}
 
 	void run_winch() {
-		if (runWinch) {
-			winch->Set(1);
-		} else {
+		switch (winchLevel) {
+		case (normal):
+			winch->Set(winchNormal);
+			break;
+		default:
 			winch->Set(0);
+			break;
 		}
 	}
 
@@ -134,7 +207,7 @@ public:
 			turn = 0;
 		}
 		if (gamepad.GetRawButton(7)) { // Drive override
-			if(driveLevel != slow){
+			if (driveLevel != slow) {
 				driveLevel = slow;
 			}
 		} else {
@@ -144,23 +217,14 @@ public:
 				driveLevel = normal;
 			}
 		}
-		/*
-		 if (gamepad.GetRawButton(6) != btn_driveToggle) {
-		 btn_driveToggle = !btn_driveToggle;
-		 if (btn_driveToggle == true) {
-		 if (driveLevel == full) {
-		 driveLevel = normal;
-		 } else {
-		 driveLevel = full;
-		 }
-		 }
-		 }
-		 */
 
 		//button panel: Shooter control polling
-		bool bslow = panel.GetRawButton(3), bnormal = panel.GetRawButton(2),
-				bfull = panel.GetRawButton(1);
-		if (bslow == true && shooterLevel != slow) {
+		bool bslow = panel.GetRawButton(3), bnormal = (panel.GetRawButton(2)
+				|| gamepad.GetRawButton(1)), bfull = panel.GetRawButton(1),
+				breverse = panel.GetRawButton(7);
+		if (breverse == true && shooterLevel != reverse) {
+			shooterLevel = reverse;
+		} else if (bslow == true && shooterLevel != slow) {
 			shooterLevel = slow;
 		} else if (bnormal == true && shooterLevel != normal) {
 			shooterLevel = normal;
@@ -171,7 +235,37 @@ public:
 		}
 
 		// agitator control polling
-		runAgitator = panel.GetRawButton(6);
+		if (panel.GetRawButton(6) || gamepad.GetRawButton(2)) { // Run agitator forward
+			agitatorLevel = normal;
+		} else if (panel.GetRawButton(5)) { // Run agitator in reverse
+			agitatorLevel = reverse;
+		} else {
+			agitatorLevel = stop;
+		}
+		frc::SmartDashboard::PutNumber("runAgitator", agitatorLevel);
+
+		if (panel.GetRawButton(8)) {
+			winchLevel = normal;
+		} else {
+			winchLevel = stop;
+		}
+
+		if (panel.GetRawButton(4)) {
+			if (!doorDrop[0]) {
+				doorDrop[0] = true;
+				doorDrop[1] = !doorDrop[1];
+			}
+		} else {
+			doorDrop[0] = false;
+		}
+
+		//Drive Direction
+		if (gamepad.GetRawButton(5)) {
+			driverDir = left;
+		} else {
+			driverDir = front;
+		}
+
 	}
 
 	void pollSensors() {
@@ -186,12 +280,23 @@ public:
 		frc::SmartDashboard::PutNumber("turn ", turn);
 		frc::SmartDashboard::PutNumber("shooterLevel", shooterLevel);
 		frc::SmartDashboard::PutBoolean("driveLevelFull", driveLevel == full);
-		frc::SmartDashboard::PutBoolean("driveLevelNormal", driveLevel == normal);
+		frc::SmartDashboard::PutBoolean("driveLevelNormal",
+				driveLevel == normal);
 		frc::SmartDashboard::PutBoolean("driveLevelSlow", driveLevel == slow);
-		frc::SmartDashboard::PutBoolean("Button 0", driveLevel == slow);
 		frc::SmartDashboard::PutNumber("shooter pos", shooter.GetEncPosition());
 		frc::SmartDashboard::PutBoolean("shooter vel", shooter.GetEncVel());
 		//frc::SmartDashboard::PutNumber("VR", table->GetNumber("cx"));
+	}
+
+	bool pollVision() {
+		if (frc::SmartDashboard::GetNumber("pollVision", 1) == 0) {
+			visionChangeX = frc::SmartDashboard::GetNumber("cX", 0);
+			visionChangeY = frc::SmartDashboard::GetNumber("cY", 0);
+			visionError = (frc::SmartDashboard::GetNumber("vrerror", 0) == 1);
+			frc::SmartDashboard::PutNumber("pollVision", 1);
+			return true;
+		}
+		return false;
 	}
 
 	/*
@@ -206,27 +311,224 @@ public:
 	 * SendableChooser make sure to add them to the chooser code above as well.
 	 */
 	void AutonomousInit() override { //This method is called once each time the robot enters Autonomous
-		autoSelected = chooser.GetSelected();
-		//std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
-		std::cout << "Auto selected: " << autoSelected << std::endl;
+		//autoSelected = chooser.GetSelected();
+		std::string autoSelected = SmartDashboard::GetString("Auto Selector",
+				"default");
+		//std::cout << "Auto selected: " << autoSelected << std::endl;
+		/*
+		 if (autoSelected == autoNameCustom) {
+		 // Custom Auto goes here
+		 } else {
+		 // Default Auto goes here
+		 }
+		 */
+		autoMode = 0;
+		robotDrive.SetExpiration(0.3);
 
-		if (autoSelected == autoNameCustom) {
-			// Custom Auto goes here
+		// Invert the left side motors
+		robotDrive.SetInvertedMotor(RobotDrive::kFrontLeftMotor, true);
+
+		// You may need to change or remove this to match your robot
+		robotDrive.SetInvertedMotor(RobotDrive::kRearLeftMotor, true);
+		timer1.Reset();
+		timer1.Start();
+	}
+
+	void setAutoMode(int mode) {
+		autoMode = mode;
+		frc::SmartDashboard::PutNumber("Auto Mode", autoMode);
+	}
+
+	void run_door() {
+		if (doorDrop[1]) {
+			drop->Set(70);
 		} else {
-			// Default Auto goes here
+			drop->Set(0);
 		}
 	}
 
-	void AutonomousPeriodic() {
+	void autoVision() {
+		switch (autoMode) {
+		case (0):
+			setAutoMode(1);
+			break;
+			if (timer1.Get() >= 1) { // until one second has passed
+				updateDrive(0, 0, 0, 0); // stop driving
+				setAutoMode(1); // change the automode
+				timer1.Reset();
+			} else {
+				updateDrive(0, -0.5, 0, 0); //drive forward at half speed
+			}
+			break;
+		case (1):
+			if (pollVision()) {
+				double temp = timer1.Get();
+				double x = 0;
+				double y = 0;
+				double z = 0;
+				if (visionError) {
+					updateDrive(0, 0, 0);
+				} else {
+					if (visionChangeX < 310 - visionXMarginOfError) {
+						//updateDrive(-0.8, 0, 0);
+						x = -0.7;
+						frc::SmartDashboard::PutBoolean("Found Target", false);
+						frc::SmartDashboard::PutBoolean("???????", false);
+					} else if (visionChangeX > 310 + visionXMarginOfError) {
+						//updateDrive(0.8, 0, 0);
+						x = 0.7;
+						frc::SmartDashboard::PutBoolean("Found Target", false);
+						frc::SmartDashboard::PutBoolean("???????", true);
+					} else {
+						//updateDrive(0, 0, 0);
+						x = 0;
+						frc::SmartDashboard::PutBoolean("Found Target", true);
+					}
+					if (visionChangeY > 200) {
+						y = -0.6;
+					} else if (visionChangeY > 5) {
+						y = -0.4;
+					} else {
+						y = 0;
+					}
+					if (x == 0 && y == 0) {
+						setAutoMode(6);
+						frc::SmartDashboard::PutString("auto status",
+								"Stopped; Hit Gear");
+					}
+					updateDrive(x, y, z);
+					frc::SmartDashboard::PutNumber("visionChangeX",
+							visionChangeX);
+					frc::SmartDashboard::PutNumber("visionChangeY",
+							visionChangeY);
+				}
+				frc::SmartDashboard::PutNumber("visionSpeed", temp);
+				timer1.Reset();
+			}
+			break;
+		case (2):
+			timer1.Reset();
+			updateDrive(0, -0.6, 0);
+			setAutoMode(3);
+			break;
+		case (3):
+			if (timer1.Get() > 3 || visionChangeY < 50) {
+				updateDrive(0, 0, 0);
+				setAutoMode(4);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	void autoDriveForward() {
+		driveLevel = full;
+		switch (autoMode) {
+		case (0):
+			timer1.Reset();
+			updateDrive(0, -0.40, 0, 0);
+			setAutoMode(1);
+			break;
+		case (1):
+			if (timer1.Get() > 4) { // stop
+				updateDrive(0, 0, 0, 0);
+				setAutoMode(2);
+			} else if (timer1.Get() > 1.25) { // Slow down
+				updateDrive(0, -0.3, 0, 0);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	/*
+	 * @brief get balls and shoot
+	 */
+	void autoDriveAndShoot() {
+		/*
+		 * drive forward 50% for 7.75 sec
+		 * strafe right 60% for 3 sec
+		 * strafe left 60% for .75 sec
+		 * reverse 50% for 3.75 sec
+		 * reverse 30% for 6 sec
+		 * turn right 30% for .75 sec
+		 * stop
+		 * agitate 100%, leave on
+		 * wait 1 sec
+		 * shoot until end of auto
+		 */
+		switch (autoMode) {
+		case (0): // drive forward
+			updateDrive(0, 0.5, 0, 0);
+			if (timer1.Get() > 7.75) {
+				setAutoMode(autoMode + 1);
+				timer1.Reset();
+			}
+			break;
+		case (1): // strafe right
+			updateDrive(0.6, 0, 0, 0);
+			if (timer1.Get() > 3) {
+				setAutoMode(autoMode + 1);
+				timer1.Reset();
+			}
+			break;
+		case (2): // strafe left
+			updateDrive(-0.6, 0, 0, 0);
+			if (timer1.Get() > 0.75) {
+				setAutoMode(autoMode + 1);
+				timer1.Reset();
+			}
+			break;
+		case (3): // reverse
+			updateDrive(0, -0.5, 0, 0);
+			if (timer1.Get() > 3.75) {
+				setAutoMode(autoMode + 1);
+				timer1.Reset();
+			}
+			break;
+		case (4): // turn right
+			updateDrive(0, 0, 0.3, 0);
+			if (timer1.Get() > 0.75) {
+				setAutoMode(autoMode + 1);
+				timer1.Reset();
+			}
+			break;
+		case (5): // run agitator, leave on
+			updateDrive(0, 0, 0, 0);
+			agitatorLevel = normal;
+			run_agitator();
+			if (timer1.Get() > 1) {
+				setAutoMode(autoMode + 1);
+				timer1.Reset();
+			}
+			break;
+		case (6): // shooter
+			shooterLevel = full;
+			run_shooter();
+			break;
+		default:
+			break;
+		}
+	}
+
+	void AutonomousPeriodic() { // TODO: FIX THIS
 		/* This method is called each time the robot receives a
 		 * packet instructing the robot to be in Autonomous Enabled mode (approximately every 20ms)
 		 * This means that code in this method should return in 20 ms or less (no delays or loops)
 		 */
-		if (autoSelected == autoNameCustom) {
-			// Custom Auto goes here
+		//autoVision();
+		if (autoSelected == driveForward) {
+			autoDriveForward();
+		} else if (autoSelected == vision) {
+			autoVision();
 		} else {
-			// Default Auto goes here
+
 		}
+		sendDataToDriverStation();
+		frc::SmartDashboard::PutString("!!!",
+				frc::SmartDashboard::GetString("Auto Selector", "-1"));
+		updateDrive(0, 0, 0, 0, false); // Just send previouse signals to motors to prevent watchdog.
 	}
 
 	void TeleopInit() {
@@ -247,53 +549,67 @@ public:
 		/* The TeleopPeriodic method is called each time the robot recieves a packet instructing it
 		 * to be in teleoperated mode
 		 */
-		uint8_t ticks = ++teleopTicks;
-		if (ticks > 0) {
-			pollControllers();
-			pollSensors();
+		pollControllers();
+		pollSensors();
+		switch (driverDir) {
+		case (left):
+			drive(-forwardBackward, strafe, turn, 0);
+			break;
+		default:
 			drive(strafe, forwardBackward, turn, 0);
-			run_shooter();
-			run_winch();
-			sendDataToDriverStation();
-			ticks = 0;
-			getShooterConfig();
+			break;
 		}
+
+		run_shooter();
+		run_agitator();
+		run_winch();
+		run_door();
+		sendDataToDriverStation();
+		getShooterConfig();
+	}
+
+	void TestInit() {
+		//TimeCh1.Reset();
+		//TimeCh1.Start();
 	}
 
 	void TestPeriodic() { // only runs if robot is in test mode
-		lw->Run();
-
+		//lw->Run();
 		// get encoder values and send them to the dashboard
+		pollVision();
+		frc::SmartDashboard::PutNumber("visionChangeX", visionChangeX);
 	}
 
 	void RobotInit() {
-		chooser.AddDefault(autoNameDefault, autoNameDefault);
-		chooser.AddObject(autoNameCustom, autoNameCustom);
+		//chooser.AddDefault(autoNameDefault, autoNameDefault);
+		//chooser.AddObject(autoNameCustom, autoNameCustom);
 		frc::SmartDashboard::PutData("Auto Modes", &chooser);
 		//CameraServer::GetInstance()->StartAutomaticCapture();
 
 		//Declare Varibles
-		agitator = new TalonSRX(5);
 		winch = new TalonSRX(4);
+		agitator = new TalonSRX(5);
+		drop = new frc::Servo(6);
 
 		//Init Varibles
 
 		shooterEncoder = new Encoder(shooterEncoderChannelA,
 				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
-		shooter.SetControlMode(frc::CANSpeedController::ControlMode::kSpeed);
+		shooter.SetControlMode(
+				frc::CANSpeedController::ControlMode::kPercentVbus);
 		shooterEncoder->SetMaxPeriod(.1);
 		shooterEncoder->SetMinRate(10);
 		shooterEncoder->SetDistancePerPulse(.0001);
 		shooterEncoder->SetReverseDirection(true);
 		shooterEncoder->SetSamplesToAverage(7);
 		table = NetworkTable::GetTable("SmartDashboard");
-		NetworkTable::GlobalDeleteAll();
 
 		shooter.SetFeedbackDevice(
 				CANTalon::FeedbackDevice::CtreMagEncoder_Relative);
 		shooter.ConfigNominalOutputVoltage(+0.0f, -0.0f);
 		shooter.ConfigPeakOutputVoltage(+12.0f, -12.0f);
 		shooter.SetEncPosition(0);
+		NetworkTable::GlobalDeleteAll();
 		sendDataToDriverStation();
 		{
 			std::ifstream file(pathShooterFull);
@@ -319,15 +635,17 @@ public:
 		frc::SmartDashboard::PutNumber("shooterFull", shooterFull);
 		frc::SmartDashboard::PutNumber("shooterNormal", shooterNormal);
 		frc::SmartDashboard::PutNumber("shooterSlow", shooterSlow);
+		frc::SmartDashboard::PutNumber("pollVision", 1);
 		//frc::SmartDashboard::PutNumber("!-!",frc::SmartDashboard::GetNumber("Shooter full",-1)); //TODO: FIX THIS
 	}
 
 private:
 	frc::LiveWindow* lw = LiveWindow::GetInstance(); // this is for testing
 	frc::SendableChooser<std::string> chooser;
-	const std::string autoNameDefault = "auto 1";
-	const std::string autoNameCustom = "auto 2";
-	std::string autoSelected;
+	enum autoModes {
+		driveForward = 0, vision = 1
+	};
+	autoModes autoSelected;
 
 	// Channels for the wheels
 	static constexpr int kFrontLeftChannel = 0;
@@ -367,28 +685,52 @@ private:
 
 	CANTalon shooter { 1 }; // id of the device is zero
 
+	Servo* drop;
+
 	double driveSlow = 0.3, driveNormal = 0.6, driveFull = 1;
+	double strafeSlow = 0.5, strafeNormal = 0.8, strafeFull = driveFull;
 
 	enum speedLevels {
-		stop, slow, normal, full
+		reverse, stop, slow, normal, full
 	};
 	speedLevels driveLevel = normal, shooterLevel = normal;
 
 	//shooter speeds
-	int shooterSlow = 2000, shooterNormal = 4000, shooterFull = 8000;
+	double shooterSlow = 2000, shooterNormal = 4000, shooterFull = 8000;
 
 	//Gamepad
 	bool btn_driveToggle = false, btn_shooterToggle = false;
-	uint8_t teleopTicks;
+
+	speedLevels agitatorLevel = stop;
+	double agitatorNormal = 1, agitatorReverse = -1;
+
+	speedLevels winchLevel = stop;
+	double winchNormal = 1, winchReverse = -1;
 
 	// Panel
-	bool runWinch = false, runAgitator = false;
+	bool runWinch = false;
 
 	std::shared_ptr<NetworkTable> table;
 
 	std::string pathShooterFull = "/home/lvuser/shooterFull.txt",
 			pathShooterNormal = "/home/lvuser/shooterNormal.txt",
 			pathShooterSlow = "/home/lvuser/shooterSlow.txt";
+
+	int autoMode = 0;
+
+	double driveX, driveY, driveZ, driveGyro;
+	int visionChangeX = 0, visionChangeY = 0, visionXMarginOfError = 40;bool visionError =
+	true;
+
+	bool doorDrop[2] = { false, false };
+
+	enum direction {
+		front = 0, right = 90, back = 180, left = 270
+	};
+
+	direction driverDir = front;
+
+	Timer timer1;
 
 };
 
@@ -411,23 +753,39 @@ START_ROBOT_CLASS(Robot);
  * */
 
 /*
- * Layout: (No joystick only game pads)
- * Controler: Game Pad
- *  Forward/Backward  -> left stick verticle
- *  Strafe Left/Right -> Left stick horazontal
- *  Turn left/Right   -> Right stick verticle
- *
  * Controls
+ * 	Drive System:
+ * 	 forward/backward  -> gamepad joystick 1 Y-axis
+ * 	 strafe left/right -> gamepad joystick 1 X-axis
+ * 	 turn left/right   -> gamepad joystick 2 X-axis
+ * 	 stop -> no above input
+ * 	 ~Note: there is deadzones on joysticks
+ *
+ * 	Drive direction:
+ * 	 left -> (when pressed) gamepad btn 5 (left top bumper)
+ * 	 front -> when no above input
+ *
  *  Shooter speed: (when pressed)
- *   stop   -> no below input
  *   low    -> panel btn 1 (label: HI)
- *   normal -> panel btn 2 (label: mid)
+ *   normal -> panel btn 2 (label: mid) or gamepad btn 1
  *   high   -> panel btn 3 (label: dwn)
- *  Drive speed: (toggle)
+ *   reverse -> panel btn 7
+ *   stop   -> no above input
+ *
+ *  Drive 'gears': (toggle)
  *   low    (toggle) -> gamepad btn 7 (left bumper)
  *   normal (toggle) -> gamepad btn 8 (right bumper)
  *   high   (toggle) -> gamepad btn 6 (right bumper)
- *  Winch: (when pressed) -> panel btn 4
+ *
+ *  Winch:
+ *   Forward: (pressed) -> panel btn 4
+ *   Stop: No above button pressed
+ *
+ *  Agitator:
+ *   Forward: (pressed) -> panel btn 6 or gamepad btn 2
+ *   Reverse: (pressed) -> panel btn 5
+ *   Stop: no above button pressed
+ *
  *  Drop: (one time toggle, default state false/up) ->
  *
  *	!-COMPLETED-!
