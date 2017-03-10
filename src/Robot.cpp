@@ -46,6 +46,7 @@ public:
 				getline(ifile, temp); // config two BLUE team
 				config_BLUE.shooterSlow = atoi(temp.c_str());
 
+
 				//shooter normal configs
 				getline(ifile, temp); // config one RED team
 				config_RED.shooterNormal = atoi(temp.c_str());
@@ -81,17 +82,17 @@ public:
 		case (slow):
 			x = (x / 1) * strafeSlow;
 			y = (y / 1) * driveSlow;
-			z = (z / 1) * driveSlow;
+			z = (z / 1) * turnSlow;
 			break;
 		case (normal):
 			x = (x / 1) * strafeNormal;
 			y = (y / 1) * driveNormal;
-			z = (z / 1) * driveNormal;
+			z = (z / 1) * turnNormal;
 			break;
 		case (full):
 			x = (x / 1) * strafeFull;
 			y = (y / 1) * driveFull;
-			z = (z / 1) * driveFull;
+			z = (z / 1) * turnFull;
 			break;
 		default:
 			x = 0;
@@ -189,23 +190,25 @@ public:
 
 	void pollControllers() {
 		//gamepad: Drive control polling
-		double leftdead = .1;
-		double rightdead = .1;
+		double leftdead = .2;
+		double rightdead = .2;
 		if (gamepad.GetX() > leftdead || gamepad.GetX() < -leftdead) {
-			strafe = gamepad.GetX();
+			strafe = ((gamepad.GetX()-leftdead)/(1-leftdead));
 		} else {
 			strafe = 0;
 		}
 		if (gamepad.GetY() > leftdead || gamepad.GetY() < -leftdead) {
-			forwardBackward = gamepad.GetY();
+			forwardBackward = ((gamepad.GetY()-leftdead)/(1-leftdead));
 		} else {
 			forwardBackward = 0;
 		}
 		if (gamepad.GetZ() > rightdead || gamepad.GetZ() < -rightdead) {
-			turn = gamepad.GetZ();
+			turn = ((gamepad.GetZ()-rightdead)/(1-rightdead));
 		} else {
 			turn = 0;
 		}
+
+		//Drive Levels 'Gears'
 		if (gamepad.GetRawButton(7)) { // Drive override
 			if (driveLevel != slow) {
 				driveLevel = slow;
@@ -423,6 +426,7 @@ public:
 	}
 
 	void autoDriveForward() {
+		frc::SmartDashboard::PutString("Auto Name", "Auto Drive Forward");
 		driveLevel = full;
 		switch (autoMode) {
 		case (0):
@@ -431,11 +435,10 @@ public:
 			setAutoMode(1);
 			break;
 		case (1):
-			if (timer1.Get() > 4) { // stop
+			break;
+			if (timer1.Get() > 3.75) { // stop
 				updateDrive(0, 0, 0, 0);
 				setAutoMode(2);
-			} else if (timer1.Get() > 1.25) { // Slow down
-				updateDrive(0, -0.3, 0, 0);
 			}
 			break;
 		default:
@@ -526,8 +529,7 @@ public:
 
 		}
 		sendDataToDriverStation();
-		frc::SmartDashboard::PutString("!!!",
-				frc::SmartDashboard::GetString("Auto Selector", "-1"));
+		//frc::SmartDashboard::PutString("!!!",frc::SmartDashboard::GetString("Auto Selector", "-1"));
 		updateDrive(0, 0, 0, 0, false); // Just send previouse signals to motors to prevent watchdog.
 	}
 
@@ -688,7 +690,8 @@ private:
 	Servo* drop;
 
 	double driveSlow = 0.3, driveNormal = 0.6, driveFull = 1;
-	double strafeSlow = 0.5, strafeNormal = 0.8, strafeFull = driveFull;
+	double strafeSlow = 0.45, strafeNormal = 0.8, strafeFull = driveFull;
+	double turnSlow = 0.25, turnNormal = driveNormal, turnFull = driveFull;
 
 	enum speedLevels {
 		reverse, stop, slow, normal, full
