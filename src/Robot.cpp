@@ -46,7 +46,6 @@ public:
 				getline(ifile, temp); // config two BLUE team
 				config_BLUE.shooterSlow = atoi(temp.c_str());
 
-
 				//shooter normal configs
 				getline(ifile, temp); // config one RED team
 				config_RED.shooterNormal = atoi(temp.c_str());
@@ -190,21 +189,34 @@ public:
 
 	void pollControllers() {
 		//gamepad: Drive control polling
-		double leftdead = .2;
-		double rightdead = .2;
-		if (gamepad.GetX() > leftdead || gamepad.GetX() < -leftdead) {
-			strafe = ((gamepad.GetX()-leftdead)/(1-leftdead));
-		} else {
+		double leftdead = .1;
+		double rightdead = .1;
+		double tmp = 0;
+		tmp = gamepad.GetX();
+		frc::SmartDashboard::PutNumber("X = ", tmp);
+		frc::SmartDashboard::PutBoolean("X>.5", tmp>0.5);
+		if (tmp > leftdead) {
+			strafe = ((tmp - leftdead) * (1/(1-leftdead)));
+		}else if(tmp < -leftdead){
+			strafe = ((tmp + leftdead) * (-1/(-1+leftdead)));
+		}else {
 			strafe = 0;
 		}
-		if (gamepad.GetY() > leftdead || gamepad.GetY() < -leftdead) {
-			forwardBackward = ((gamepad.GetY()-leftdead)/(1-leftdead));
-		} else {
+		tmp = gamepad.GetY();
+		frc::SmartDashboard::PutNumber("Y = ", tmp);
+		if (tmp > leftdead) {
+			forwardBackward = ((tmp - leftdead) * (1/(1-leftdead)));
+		} else if(tmp < -leftdead){
+			forwardBackward = ((tmp + leftdead) * (-1/(-1+leftdead)));
+		}else{
 			forwardBackward = 0;
 		}
-		if (gamepad.GetZ() > rightdead || gamepad.GetZ() < -rightdead) {
-			turn = ((gamepad.GetZ()-rightdead)/(1-rightdead));
-		} else {
+		tmp = gamepad.GetZ();
+		if (tmp > rightdead) {
+			turn = ((tmp - rightdead) * (1/(1-rightdead)));
+		} else if( tmp < -rightdead){
+			turn = ((tmp + rightdead) * (-1/(-1+rightdead)));
+		}else{
 			turn = 0;
 		}
 
@@ -288,6 +300,9 @@ public:
 		frc::SmartDashboard::PutBoolean("driveLevelSlow", driveLevel == slow);
 		frc::SmartDashboard::PutNumber("shooter pos", shooter.GetEncPosition());
 		frc::SmartDashboard::PutBoolean("shooter vel", shooter.GetEncVel());
+
+		frc::SmartDashboard::PutNumber("visionChangeX", visionChangeX);
+		frc::SmartDashboard::PutNumber("visionChangeY", visionChangeY);
 		//frc::SmartDashboard::PutNumber("VR", table->GetNumber("cx"));
 	}
 
@@ -315,17 +330,22 @@ public:
 	 */
 	void AutonomousInit() override { //This method is called once each time the robot enters Autonomous
 		//autoSelected = chooser.GetSelected();
-		std::string autoSelected = SmartDashboard::GetString("Auto Selector",
-				"default");
+		std::string str = SmartDashboard::GetString("Auto Selector", "default");
 		//std::cout << "Auto selected: " << autoSelected << std::endl;
-		/*
-		 if (autoSelected == autoNameCustom) {
-		 // Custom Auto goes here
-		 } else {
-		 // Default Auto goes here
-		 }
-		 */
-		autoMode = 0;
+		if (str == "0") {
+			autoSelected = driveForward;
+			frc::SmartDashboard::PutString("Auto Name",
+					"Auto Dead reckoning (drive forward)");
+		} else if (str == "1") {
+			autoSelected = vision;
+			frc::SmartDashboard::PutString("Auto Name", "Auto Vision");
+		} else {
+			autoSelected = none;
+			frc::SmartDashboard::PutString("Auto Name",
+					"Auto NONE (" + str + ")");
+		}
+
+		//autoMode = 0;
 		robotDrive.SetExpiration(0.3);
 
 		// Invert the left side motors
@@ -338,8 +358,8 @@ public:
 	}
 
 	void setAutoMode(int mode) {
-		autoMode = mode;
-		frc::SmartDashboard::PutNumber("Auto Mode", autoMode);
+		autoSubMode = mode;
+		frc::SmartDashboard::PutNumber("Auto Sub Mode", autoSubMode);
 	}
 
 	void run_door() {
@@ -350,8 +370,51 @@ public:
 		}
 	}
 
+	int autoVisionHelper_getStrafe() {
+		if (visionChangeX < 310 - visionXMarginOfError) {
+			frc::SmartDashboard::PutString("Auto vision strafe", "left");
+			return left;
+		} else if (visionChangeX > 310 + visionXMarginOfError) {
+			frc::SmartDashboard::PutString("Auto vision strafe", "right");
+			return right;
+		} else {
+			frc::SmartDashboard::PutString("Auto vision strafe", "center");
+
+			frc::SmartDashboard::PutBoolean("Auto Found Target",
+			true);
+			return back; // Center of target
+		}
+	}
+
+	int autoVisionHelper_notAtTarget() {
+		if (visionChangeY > 10) {
+			frc::SmartDashboard::PutBoolean("Auto Vision Found Target",
+			false);
+			return true;
+		} else {
+			frc::SmartDashboard::PutBoolean("Auto Vision Found Target",
+			true);
+			return false;
+		}
+	}
+
+	int autoVisionHelper_getTargetDistance() {
+		if (visionChangeY > close) {
+			frc::SmartDashboard::PutString("Auto target distance", "far");
+			return far;
+		} else if (visionChangeY > hit) {
+			frc::SmartDashboard::PutString("Auto target distance", "close");
+			return close;
+		} else {
+			frc::SmartDashboard::PutString("Auto target distance", "hit");
+			return hit;
+		}
+	}
+
+	int leftCenterRight = 0;bool notAtTarget = true;
 	void autoVision() {
-		switch (autoMode) {
+		driveLevel = slow;
+		switch (autoSubMode) {
 		case (0):
 			setAutoMode(1);
 			break;
@@ -360,7 +423,7 @@ public:
 				setAutoMode(1); // change the automode
 				timer1.Reset();
 			} else {
-				updateDrive(0, -0.5, 0, 0); //drive forward at half speed
+				updateDrive(0, -0.4, 0, 0); //drive forward at half speed
 			}
 			break;
 		case (1):
@@ -370,40 +433,61 @@ public:
 				double y = 0;
 				double z = 0;
 				if (visionError) {
-					updateDrive(0, 0, 0);
-				} else {
-					if (visionChangeX < 310 - visionXMarginOfError) {
-						//updateDrive(-0.8, 0, 0);
-						x = -0.7;
-						frc::SmartDashboard::PutBoolean("Found Target", false);
-						frc::SmartDashboard::PutBoolean("???????", false);
-					} else if (visionChangeX > 310 + visionXMarginOfError) {
-						//updateDrive(0.8, 0, 0);
-						x = 0.7;
-						frc::SmartDashboard::PutBoolean("Found Target", false);
-						frc::SmartDashboard::PutBoolean("???????", true);
-					} else {
-						//updateDrive(0, 0, 0);
-						x = 0;
-						frc::SmartDashboard::PutBoolean("Found Target", true);
+					if(autoVisionHelper_getTargetDistance()==close){
+						setAutoMode(2);
+						break;
 					}
-					if (visionChangeY > 200) {
-						y = -0.6;
-					} else if (visionChangeY > 5) {
-						y = -0.4;
+					if (notAtTarget) { // FIX THIS
+						switch (leftCenterRight) {
+						case (-1): //left
+							updateDrive(1, 0, 0, 0);
+							break;
+						case (1): //right
+							updateDrive(-1, 0, 0, 0);
+							break;
+						}
 					} else {
+						updateDrive(0, 0, 0);
+					}
+				} else {
+					notAtTarget = autoVisionHelper_notAtTarget();
+					switch (autoVisionHelper_getStrafe()) {
+					case (left):
+						x = -1;
+						leftCenterRight = -1;
+						break;
+					case (right):
+						x = 1;
+						leftCenterRight = 1;
+						break;
+					default:
+						x = 0;
+						leftCenterRight = 0;
+						break;
+					}
+					switch (autoVisionHelper_getTargetDistance()) {
+					case (far):
+						notAtTarget = true;
+						y = -0.6;
+						break;
+					case (close):
+						notAtTarget = true;
+						y = -0.6;
+						break;
+					default:
+						notAtTarget = false;
+						y = 0;
+						break;
+					}
+					if (x != 0){
 						y = 0;
 					}
 					if (x == 0 && y == 0) {
 						setAutoMode(6);
-						frc::SmartDashboard::PutString("auto status",
+						frc::SmartDashboard::PutString("Auto status",
 								"Stopped; Hit Gear");
 					}
 					updateDrive(x, y, z);
-					frc::SmartDashboard::PutNumber("visionChangeX",
-							visionChangeX);
-					frc::SmartDashboard::PutNumber("visionChangeY",
-							visionChangeY);
 				}
 				frc::SmartDashboard::PutNumber("visionSpeed", temp);
 				timer1.Reset();
@@ -415,7 +499,7 @@ public:
 			setAutoMode(3);
 			break;
 		case (3):
-			if (timer1.Get() > 3 || visionChangeY < 50) {
+			if (timer1.Get() > 2) {
 				updateDrive(0, 0, 0);
 				setAutoMode(4);
 			}
@@ -426,9 +510,8 @@ public:
 	}
 
 	void autoDriveForward() {
-		frc::SmartDashboard::PutString("Auto Name", "Auto Drive Forward");
 		driveLevel = full;
-		switch (autoMode) {
+		switch (autoSubMode) {
 		case (0):
 			timer1.Reset();
 			updateDrive(0, -0.40, 0, 0);
@@ -461,39 +544,39 @@ public:
 		 * wait 1 sec
 		 * shoot until end of auto
 		 */
-		switch (autoMode) {
+		switch (autoSubMode) {
 		case (0): // drive forward
 			updateDrive(0, 0.5, 0, 0);
 			if (timer1.Get() > 7.75) {
-				setAutoMode(autoMode + 1);
+				setAutoMode(autoSubMode + 1);
 				timer1.Reset();
 			}
 			break;
 		case (1): // strafe right
 			updateDrive(0.6, 0, 0, 0);
 			if (timer1.Get() > 3) {
-				setAutoMode(autoMode + 1);
+				setAutoMode(autoSubMode + 1);
 				timer1.Reset();
 			}
 			break;
 		case (2): // strafe left
 			updateDrive(-0.6, 0, 0, 0);
 			if (timer1.Get() > 0.75) {
-				setAutoMode(autoMode + 1);
+				setAutoMode(autoSubMode + 1);
 				timer1.Reset();
 			}
 			break;
 		case (3): // reverse
 			updateDrive(0, -0.5, 0, 0);
 			if (timer1.Get() > 3.75) {
-				setAutoMode(autoMode + 1);
+				setAutoMode(autoSubMode + 1);
 				timer1.Reset();
 			}
 			break;
 		case (4): // turn right
 			updateDrive(0, 0, 0.3, 0);
 			if (timer1.Get() > 0.75) {
-				setAutoMode(autoMode + 1);
+				setAutoMode(autoSubMode + 1);
 				timer1.Reset();
 			}
 			break;
@@ -502,7 +585,7 @@ public:
 			agitatorLevel = normal;
 			run_agitator();
 			if (timer1.Get() > 1) {
-				setAutoMode(autoMode + 1);
+				setAutoMode(autoSubMode + 1);
 				timer1.Reset();
 			}
 			break;
@@ -521,12 +604,17 @@ public:
 		 * This means that code in this method should return in 20 ms or less (no delays or loops)
 		 */
 		//autoVision();
-		if (autoSelected == driveForward) {
+		switch (autoSelected) {
+		case (driveForward):
 			autoDriveForward();
-		} else if (autoSelected == vision) {
+			pollVision();
+			break;
+		case (vision):
 			autoVision();
-		} else {
-
+			break;
+		default:
+			updateDrive(0, 0, 0, 0);
+			break;
 		}
 		sendDataToDriverStation();
 		//frc::SmartDashboard::PutString("!!!",frc::SmartDashboard::GetString("Auto Selector", "-1"));
@@ -544,13 +632,14 @@ public:
 
 		// You may need to change or remove this to match your robot
 		robotDrive.SetInvertedMotor(RobotDrive::kRearLeftMotor, true);
-
+		setAutoMode(0);
 	}
 
 	void TeleopPeriodic() {
 		/* The TeleopPeriodic method is called each time the robot recieves a packet instructing it
 		 * to be in teleoperated mode
 		 */
+		pollVision();
 		pollControllers();
 		pollSensors();
 		switch (driverDir) {
@@ -638,6 +727,10 @@ public:
 		frc::SmartDashboard::PutNumber("shooterNormal", shooterNormal);
 		frc::SmartDashboard::PutNumber("shooterSlow", shooterSlow);
 		frc::SmartDashboard::PutNumber("pollVision", 1);
+		frc::SmartDashboard::PutString("Auto vision strafe", "init");
+		frc::SmartDashboard::PutString("Auto target distance", "init");
+		frc::SmartDashboard::PutString("Auto Name", "init");
+		frc::SmartDashboard::PutNumber("Auto vision margin", visionXMarginOfError);
 		//frc::SmartDashboard::PutNumber("!-!",frc::SmartDashboard::GetNumber("Shooter full",-1)); //TODO: FIX THIS
 	}
 
@@ -645,7 +738,7 @@ private:
 	frc::LiveWindow* lw = LiveWindow::GetInstance(); // this is for testing
 	frc::SendableChooser<std::string> chooser;
 	enum autoModes {
-		driveForward = 0, vision = 1
+		none = -1, driveForward = 0, vision = 1
 	};
 	autoModes autoSelected;
 
@@ -719,10 +812,10 @@ private:
 			pathShooterNormal = "/home/lvuser/shooterNormal.txt",
 			pathShooterSlow = "/home/lvuser/shooterSlow.txt";
 
-	int autoMode = 0;
+	int autoSubMode = 0;
 
 	double driveX, driveY, driveZ, driveGyro;
-	int visionChangeX = 0, visionChangeY = 0, visionXMarginOfError = 40;bool visionError =
+	int visionChangeX = 0, visionChangeY = 0, visionXMarginOfError = 30;bool visionError =
 	true;
 
 	bool doorDrop[2] = { false, false };
@@ -732,6 +825,10 @@ private:
 	};
 
 	direction driverDir = front;
+
+	enum autoVision_YTargetDistance {
+		hit=10, close=100, far=500
+	};
 
 	Timer timer1;
 
