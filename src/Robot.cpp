@@ -21,9 +21,24 @@
 #include <CANTalon.h>
 #include <Timer.h>
 #include <Servo.h>
+#include <ctime>
+
+//Saving stuff
+#include "fleet.h"
+#include "toolbox.h"
+#include "tests/test.cpp"
 
 class Robot: public frc::IterativeRobot {
 public:
+	fleet config_fleet;
+	actions::driveX config_x;
+	actions::driveY config_y;
+	actions::driveZ config_z;
+	actions::gyro config_gyro;
+	actions::driveGear config_gear;
+	actions::shoot config_shoot;
+	string config_folder = "/home/lvuser/autoConfigs/";
+	string autoRecordPath;bool autoRecord;
 
 	class shooterConfig {
 	public:
@@ -194,29 +209,29 @@ public:
 		double tmp = 0;
 		tmp = gamepad.GetX();
 		frc::SmartDashboard::PutNumber("X = ", tmp);
-		frc::SmartDashboard::PutBoolean("X>.5", tmp>0.5);
+		frc::SmartDashboard::PutBoolean("X>.5", tmp > 0.5);
 		if (tmp > leftdead) {
-			strafe = ((tmp - leftdead) * (1/(1-leftdead)));
-		}else if(tmp < -leftdead){
-			strafe = ((tmp + leftdead) * (-1/(-1+leftdead)));
-		}else {
+			strafe = ((tmp - leftdead) * (1 / (1 - leftdead)));
+		} else if (tmp < -leftdead) {
+			strafe = ((tmp + leftdead) * (-1 / (-1 + leftdead)));
+		} else {
 			strafe = 0;
 		}
 		tmp = gamepad.GetY();
 		frc::SmartDashboard::PutNumber("Y = ", tmp);
 		if (tmp > leftdead) {
-			forwardBackward = ((tmp - leftdead) * (1/(1-leftdead)));
-		} else if(tmp < -leftdead){
-			forwardBackward = ((tmp + leftdead) * (-1/(-1+leftdead)));
-		}else{
+			forwardBackward = ((tmp - leftdead) * (1 / (1 - leftdead)));
+		} else if (tmp < -leftdead) {
+			forwardBackward = ((tmp + leftdead) * (-1 / (-1 + leftdead)));
+		} else {
 			forwardBackward = 0;
 		}
 		tmp = gamepad.GetZ();
 		if (tmp > rightdead) {
-			turn = ((tmp - rightdead) * (1/(1-rightdead)));
-		} else if( tmp < -rightdead){
-			turn = ((tmp + rightdead) * (-1/(-1+rightdead)));
-		}else{
+			turn = ((tmp - rightdead) * (1 / (1 - rightdead)));
+		} else if (tmp < -rightdead) {
+			turn = ((tmp + rightdead) * (-1 / (-1 + rightdead)));
+		} else {
 			turn = 0;
 		}
 
@@ -340,9 +355,21 @@ public:
 			autoSelected = vision;
 			frc::SmartDashboard::PutString("Auto Name", "Auto Vision");
 		} else {
-			autoSelected = none;
-			frc::SmartDashboard::PutString("Auto Name",
-					"Auto NONE (" + str + ")");
+			this->autoRecordPath = frc::SmartDashboard::GetString("Auto Record",
+					"");
+			string data = "", path = this->config_folder + str;
+			if (false==true && this->autoRecord && toolbox::readFormatted(&path, &data)
+					&& this->config_fleet.fromString(&data, true)) {
+				autoSelected = custom;
+				frc::SmartDashboard::PutNumber("auto amount", this->config_fleet.entries.size());
+				frc::SmartDashboard::PutString("Auto Name",
+										"Auto Custom (" + this->autoRecordPath + ")");
+			} else {this->config_fleet.entries.clear();
+				autoSelected = none;
+				frc::SmartDashboard::PutString("Auto Name",
+						"Auto NONE (" + str + ")");
+			}
+
 		}
 
 		//autoMode = 0;
@@ -368,6 +395,17 @@ public:
 		} else {
 			drop->Set(0);
 		}
+	}
+
+	void DisabledInit() {
+		if (this->autoRecord) {
+			string data = "";
+			frc::SmartDashboard::PutBoolean("Auto Record to String", this->config_fleet.toString(&data));
+			string path = this->config_folder + this->autoRecordPath;
+			frc::SmartDashboard::PutBoolean("Auto Record to file", toolbox::formattedWrite(&path, &data));
+			this->autoRecord = false;
+		}
+		//frc::SmartDashboard::PutString("DisabledPeriodic", frc::SmartDashboard::GetString("Auto Record", "NULL"));
 	}
 
 	int autoVisionHelper_getStrafe() {
@@ -433,7 +471,7 @@ public:
 				double y = 0;
 				double z = 0;
 				if (visionError) {
-					if(autoVisionHelper_getTargetDistance()==close){
+					if (autoVisionHelper_getTargetDistance() == close) {
 						setAutoMode(2);
 						break;
 					}
@@ -479,7 +517,7 @@ public:
 						y = 0;
 						break;
 					}
-					if (x != 0){
+					if (x != 0) {
 						y = 0;
 					}
 					if (x == 0 && y == 0) {
@@ -650,7 +688,6 @@ public:
 			drive(strafe, forwardBackward, turn, 0);
 			break;
 		}
-
 		run_shooter();
 		run_agitator();
 		run_winch();
@@ -662,13 +699,89 @@ public:
 	void TestInit() {
 		//TimeCh1.Reset();
 		//TimeCh1.Start();
+		this->autoRecordPath = frc::SmartDashboard::GetString("Auto Record",
+				"");
+		this->autoRecord = (this->autoRecordPath.size() > 0);
+		if (this->autoRecord) {
+			this->config_fleet.entries.clear();
+			this->timer1.Reset();
+			this->timer1.Start();
+		}
 	}
 
 	void TestPeriodic() { // only runs if robot is in test mode
 		//lw->Run();
 		// get encoder values and send them to the dashboard
-		pollVision();
-		frc::SmartDashboard::PutNumber("visionChangeX", visionChangeX);
+		if (this->autoRecord) {		//Record drive, for auto mode
+			pollControllers();
+			pollSensors();
+			switch (driverDir) {
+			case (left):
+				drive(-forwardBackward, strafe, turn, 0);
+				break;
+			default:
+				drive(strafe, forwardBackward, turn, 0);
+				break;
+			}
+
+			double time = timer1.Get();
+			this->config_x.time = time;
+			this->config_y.time = time;
+			this->config_z.time = time;
+			this->config_gyro.time = time;
+			this->config_gear.time = time;
+			this->config_shoot.time = time;
+
+			this->config_x.x = strafe;
+			this->config_y.y = forwardBackward;
+			this->config_z.z = turn;
+			this->config_gyro.value = 0;
+			switch (this->driveLevel) {
+			case (slow):
+				this->config_gear.gear = actions::driveGear::slow;
+				break;
+			case (full):
+				this->config_gear.gear = actions::driveGear::full;
+				break;
+			default:
+				this->config_gear.gear = actions::driveGear::normal;
+				break;
+			}
+
+			switch (this->shooterLevel) {
+			case (slow):
+				this->config_shoot.gear = actions::shoot::slow;
+				break;
+			case (normal):
+				this->config_shoot.gear = actions::shoot::normal;
+				break;
+			case (full):
+				this->config_shoot.gear = actions::shoot::full;
+				break;
+			default:
+				this->config_shoot.gear = actions::shoot::off;
+				break;
+			}
+
+			u_int32_t id;
+			this->config_fleet.addEntry(&this->config_x, &id);
+			this->config_fleet.addEntry(&this->config_y, &id);
+			this->config_fleet.addEntry(&this->config_z, &id);
+			this->config_fleet.addEntry(&this->config_gyro, &id);
+			this->config_fleet.addEntry(&this->config_gear, &id);
+			this->config_fleet.addEntry(&this->config_shoot, &id);
+
+			run_shooter();
+			run_agitator();
+			run_winch();
+			run_door();
+			getShooterConfig();
+
+			sendDataToDriverStation();
+		} else { // just vision polling
+			pollVision();
+			frc::SmartDashboard::PutNumber("visionChangeX", visionChangeX);
+		}
 	}
 
 	void RobotInit() {
@@ -730,15 +843,34 @@ public:
 		frc::SmartDashboard::PutString("Auto vision strafe", "init");
 		frc::SmartDashboard::PutString("Auto target distance", "init");
 		frc::SmartDashboard::PutString("Auto Name", "init");
-		frc::SmartDashboard::PutNumber("Auto vision margin", visionXMarginOfError);
+		frc::SmartDashboard::PutNumber("Auto vision margin",
+				visionXMarginOfError);
 		//frc::SmartDashboard::PutNumber("!-!",frc::SmartDashboard::GetNumber("Shooter full",-1)); //TODO: FIX THIS
+
+		//Configure auto recording feature
+		this->config_fleet = fleet();
+		this->config_x = actions::driveX();
+		this->config_y = actions::driveY();
+		this->config_z = actions::driveZ();
+		this->config_gyro = actions::gyro();
+		this->config_gear = actions::driveGear();
+		this->config_shoot = actions::shoot();
+
+		u_int32_t id;
+		this->config_fleet.addTemplate(&this->config_x, &id);
+		this->config_fleet.addTemplate(&this->config_y, &id);
+		this->config_fleet.addTemplate(&this->config_z, &id);
+		this->config_fleet.addTemplate(&this->config_gyro, &id);
+		this->config_fleet.addTemplate(&this->config_gear, &id);
+		this->config_fleet.addTemplate(&this->config_shoot, &id);
+
 	}
 
 private:
 	frc::LiveWindow* lw = LiveWindow::GetInstance(); // this is for testing
 	frc::SendableChooser<std::string> chooser;
 	enum autoModes {
-		none = -1, driveForward = 0, vision = 1
+		none = -1, driveForward = 0, vision = 1, custom=2
 	};
 	autoModes autoSelected;
 
@@ -764,9 +896,9 @@ private:
 	 *
 	 ********************************************************/
 	//drive vars
-	double forwardBackward;
-	double turn;
-	double strafe;bool shoot = false;
+	double forwardBackward, last_forwardBackward;
+	double turn, last_turn;
+	double strafe, last_strafe;
 
 	frc::Joystick gamepad { 0 };
 	frc::Joystick panel { 1 };
@@ -787,8 +919,9 @@ private:
 	double turnSlow = 0.25, turnNormal = driveNormal, turnFull = driveFull;
 
 	enum speedLevels {
-		reverse, stop, slow, normal, full
+		reverse = 0, stop = 1, slow = 2, normal = 3, full = 4
 	};
+	speedLevels last_driveLevel = normal, last_shooterLevel = normal;
 	speedLevels driveLevel = normal, shooterLevel = normal;
 
 	//shooter speeds
@@ -797,6 +930,7 @@ private:
 	//Gamepad
 	bool btn_driveToggle = false, btn_shooterToggle = false;
 
+	speedLevels last_agitatorLevel = stop;
 	speedLevels agitatorLevel = stop;
 	double agitatorNormal = 1, agitatorReverse = -1;
 
@@ -815,6 +949,7 @@ private:
 	int autoSubMode = 0;
 
 	double driveX, driveY, driveZ, driveGyro;
+	double last_driveX, last_driveY, last_driveZ, last_driveGyro;
 	int visionChangeX = 0, visionChangeY = 0, visionXMarginOfError = 30;bool visionError =
 	true;
 
@@ -827,7 +962,7 @@ private:
 	direction driverDir = front;
 
 	enum autoVision_YTargetDistance {
-		hit=10, close=100, far=500
+		hit = 10, close = 100, far = 500
 	};
 
 	Timer timer1;
