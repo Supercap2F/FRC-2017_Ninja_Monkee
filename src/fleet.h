@@ -28,6 +28,7 @@ public:
     bool addEntry(dataBoat* data, u_int32_t* id);
     bool addTemplate(dataBoat* data, u_int32_t* id);
     bool getTemplateWithClassName(std::string* name, dataBoat** out);
+    bool removeEntryAt(unsigned int pos);
     bool toString(std::string* data);
     bool fromString(std::string* data, bool clearFirst=false);
     

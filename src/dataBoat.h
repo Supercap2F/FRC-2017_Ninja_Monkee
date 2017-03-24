@@ -19,6 +19,7 @@
 class dataBoat {
 public:
     std::string className;
+    double time;
     
     virtual bool toVars(std::vector< std::pair<std::string,std::string> >* vars);
     virtual bool fromVars(std::vector< std::pair<std::string,std::string> >* vars, int pos=0);

@@ -17,9 +17,9 @@
 bool fleet::addEntry(dataBoat* data, u_int32_t* id) {
     if(data==NULL || id==NULL){return false;}
     int pos = -1;
-    for(int x=0;x<this->entries.size();x++){
+    for(unsigned int x=0;x<this->entries.size();x++){
         if(this->entries[x].data==NULL){
-            pos=x;
+            pos=(signed)x;
             break;
         }
     }
@@ -36,9 +36,9 @@ bool fleet::addEntry(dataBoat* data, u_int32_t* id) {
 bool fleet::addTemplate(dataBoat* data, u_int32_t* id) {
     if(data==NULL || id==NULL){return false;}
     int pos = -1;
-    for(int x=0;x<this->templates.size();x++){
+    for(unsigned int x=0;x<this->templates.size();x++){
         if(this->templates[x].data==NULL){
-            pos=x;
+            pos=(signed)x;
             break;
         }
     }
@@ -54,7 +54,7 @@ bool fleet::addTemplate(dataBoat* data, u_int32_t* id) {
 
 bool fleet::getTemplateWithClassName(std::string* name, dataBoat** out){
     if(name==NULL || out==NULL || name->size() < 1){return false;}
-    for(int x=0;x<this->templates.size();x++){
+    for(unsigned int x=0;x<this->templates.size();x++){
         if(this->templates[x].data!=NULL && this->templates[x].data->className==(*name)){
             (*out) = this->templates[x].data;
             return true;
@@ -70,7 +70,7 @@ bool fleet::toString(std::string* data) {
     std::string str = "";
     std::string tmp;
     int count = 0;
-    for(int x=0;x<this->entries.size();x++){
+    for(unsigned int x=0;x<this->entries.size();x++){
         if(this->entries[x].data!=NULL){
             vars.clear();
             if(!this->entries[x].data->toVars(&vars)){return false;}
@@ -87,7 +87,7 @@ bool fleet::toString(std::string* data) {
             toolbox::toString(vars.size(),&tmp);
             tmp+=',';
             str.append(tmp);
-            for(int y=0;y<vars.size();y++){
+            for(unsigned int y=0;y<vars.size();y++){
                 
                 //variable name, size
                 toolbox::toString(vars[y].first.size(),&tmp);
@@ -117,6 +117,12 @@ bool fleet::toString(std::string* data) {
     return true;
 }
 
+bool fleet::removeEntryAt(unsigned int pos){
+	if(pos>this->entries.size()){return false;}
+	this->entries.erase(this->entries.begin()+pos);
+	return true;
+}
+
 
 bool fleet::fromString(std::string* data, bool clearFirst) {
     if(data==NULL || data->size()<1){return false;}
@@ -137,7 +143,7 @@ bool fleet::fromString(std::string* data, bool clearFirst) {
     pos+=toolbox::splitString(data,&tmp,pos,',');
     toolbox::toInt(&tmp,&t_int);
     
-    while(pos<data->size()){
+    while((unsigned)pos<data->size()){
         //Clear vars
         vars.clear();
         
@@ -155,7 +161,7 @@ bool fleet::fromString(std::string* data, bool clearFirst) {
         
         //parse obj vars
         count = 0;
-        while(pos<data->size() && count<amountOfVars){
+        while((unsigned)pos<data->size() && count<amountOfVars){
             
             //get var name size
             pos+=toolbox::splitString(data,&tmp,pos,',');
@@ -197,7 +203,9 @@ fleet::fleet() {
     this->entriesNextId=0;
 }
 
-fleet::fleet(const fleet& orig) {
+fleet::fleet(const fleet& orig){
+	this->templateNextId = orig.templateNextId;
+	this->entriesNextId = orig.entriesNextId;
 }
 
 fleet::~fleet() {

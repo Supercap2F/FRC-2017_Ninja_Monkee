@@ -36,9 +36,12 @@ public:
 	actions::driveZ config_z;
 	actions::gyro config_gyro;
 	actions::driveGear config_gear;
+	actions::agitator config_agitator;
 	actions::shoot config_shoot;
 	string config_folder = "/home/lvuser/autoConfigs/";
 	string autoRecordPath;bool autoRecord;
+	unsigned int autoCustomLPos = 0;
+	clock_t timestamp;
 
 	class shooterConfig {
 	public:
@@ -347,24 +350,60 @@ public:
 		//autoSelected = chooser.GetSelected();
 		std::string str = SmartDashboard::GetString("Auto Selector", "default");
 		//std::cout << "Auto selected: " << autoSelected << std::endl;
-		if (str == "0") {
+
+		//Reset values
+		this->agitatorLevel = this->stop;
+		this->shooterLevel = this->stop;
+		this->driveX = 0;
+		this->driveY = 0;
+		this->driveZ = 0;
+		this->driveGyro = 0;
+		this->driveLevel = this->normal;
+		this->driverDir = this->direction::front;
+
+		// Parse/Detect auto mode
+		if (str == "forward") {
 			autoSelected = driveForward;
 			frc::SmartDashboard::PutString("Auto Name",
 					"Auto Dead reckoning (drive forward)");
-		} else if (str == "1") {
+		} else if (str == "vision") {
 			autoSelected = vision;
 			frc::SmartDashboard::PutString("Auto Name", "Auto Vision");
+		} else if (str == "none") {
+			autoSelected = none;
 		} else {
-			this->autoRecordPath = frc::SmartDashboard::GetString("Auto Record",
-					"");
-			string data = "", path = this->config_folder + str;
-			if (false==true && this->autoRecord && toolbox::readFormatted(&path, &data)
-					&& this->config_fleet.fromString(&data, true)) {
-				autoSelected = custom;
-				frc::SmartDashboard::PutNumber("auto amount", this->config_fleet.entries.size());
-				frc::SmartDashboard::PutString("Auto Name",
-										"Auto Custom (" + this->autoRecordPath + ")");
-			} else {this->config_fleet.entries.clear();
+			//this->autoRecordPath = frc::SmartDashboard::GetString("Auto Record","");
+			string data = "", path = "" + this->config_folder + str + ".txt";
+			if (str.size() > 0) {
+				if (toolbox::readFormatted(&path, &data)) {
+					if (this->config_fleet.fromString(&data, true)) {
+						autoSelected = custom;
+						this->autoCustomLPos = 0;
+						frc::SmartDashboard::PutNumber("auto amount",
+								this->config_fleet.entries.size());
+						frc::SmartDashboard::PutString("Auto Name",
+								"Auto Custom (" + this->autoRecordPath + ")");
+						frc::SmartDashboard::PutString("Auto Custom ERROR:",
+								"");
+					} else {
+						this->config_fleet.entries.clear();
+						frc::SmartDashboard::PutString("Auto Custom ERROR:",
+								"unserilizing");
+						autoSelected = none;
+						frc::SmartDashboard::PutString("Auto Name",
+								"Auto NONE (" + str + ")");
+					}
+				} else {
+					frc::SmartDashboard::PutString("Auto Custom ERROR:",
+							"file " + path);
+					autoSelected = none;
+					frc::SmartDashboard::PutString("Auto Name",
+							"Auto NONE (" + str + ")");
+				}
+
+			} else {
+				frc::SmartDashboard::PutString("Auto Custom ERROR:",
+						"No Custom selected");
 				autoSelected = none;
 				frc::SmartDashboard::PutString("Auto Name",
 						"Auto NONE (" + str + ")");
@@ -382,6 +421,7 @@ public:
 		robotDrive.SetInvertedMotor(RobotDrive::kRearLeftMotor, true);
 		timer1.Reset();
 		timer1.Start();
+		this->timestamp = 0;
 	}
 
 	void setAutoMode(int mode) {
@@ -400,9 +440,11 @@ public:
 	void DisabledInit() {
 		if (this->autoRecord) {
 			string data = "";
-			frc::SmartDashboard::PutBoolean("Auto Record to String", this->config_fleet.toString(&data));
-			string path = this->config_folder + this->autoRecordPath;
-			frc::SmartDashboard::PutBoolean("Auto Record to file", toolbox::formattedWrite(&path, &data));
+			frc::SmartDashboard::PutBoolean("Auto Record to String",
+					this->config_fleet.toString(&data));
+			string path = this->config_folder + this->autoRecordPath + ".txt";
+			frc::SmartDashboard::PutBoolean("Auto Record to file",
+					toolbox::formattedWrite(&path, &data));
 			this->autoRecord = false;
 		}
 		//frc::SmartDashboard::PutString("DisabledPeriodic", frc::SmartDashboard::GetString("Auto Record", "NULL"));
@@ -557,7 +599,7 @@ public:
 			break;
 		case (1):
 			break;
-			if (timer1.Get() > 3.75) { // stop
+			if (timer1.Get() > 3.85) { // stop
 				updateDrive(0, 0, 0, 0);
 				setAutoMode(2);
 			}
@@ -629,6 +671,7 @@ public:
 			break;
 		case (6): // shooter
 			shooterLevel = full;
+			run_agitator();
 			run_shooter();
 			break;
 		default:
@@ -636,27 +679,106 @@ public:
 		}
 	}
 
+	void autoCustom() {
+		if (this->autoCustomLPos >= this->config_fleet.entries.size()) {
+			return;
+		}
+		double time = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC);
+		frc::SmartDashboard::PutNumber("auto times",time);
+		for (unsigned int x = this->autoCustomLPos;
+				x < this->config_fleet.entries.size() /*Need time thing*/;
+				x++) {
+			dataBoat* b = this->config_fleet.entries[x].data;
+			//frc::SmartDashboard::PutNumber("Boat", b->time);
+			if (b != NULL && time >= b->time) {
+				this->autoCustomLPos = x;
+				if (b->className == this->config_x.className) {
+					driveX = ((actions::driveX*) b)->x;
+				} else if (b->className == this->config_y.className) {
+					driveY = ((actions::driveY*) b)->y;
+				} else if (b->className == this->config_z.className) {
+					driveZ = ((actions::driveZ*) b)->z;
+				} else if (b->className == this->config_gyro.className) {
+					driveGyro = ((actions::gyro*) b)->value;
+				} else if (b->className == this->config_gear.className) {
+					actions::driveGear* o = (actions::driveGear*) b;
+					switch (o->gear) {
+					case (actions::driveGear::slow):
+						driveLevel = this->slow;
+						break;
+					case (actions::driveGear::full):
+						driveLevel = this->full;
+						break;
+					default:
+						driveLevel = this->normal;
+						break;
+					}
+				} else if (b->className == this->config_shoot.className) {
+					actions::shoot* o = (actions::shoot*) b;
+					switch (o->gear) {
+					case (actions::shoot::slow):
+						shooterLevel = this->slow;
+						break;
+					case (actions::shoot::normal):
+						shooterLevel = this->normal;
+						break;
+					case (actions::shoot::full):
+						shooterLevel = this->full;
+						break;
+					default:
+						shooterLevel = this->stop;
+						break;
+					}
+				} else if (b->className == this->config_agitator.className) {
+					actions::agitator* o = (actions::agitator*) b;
+					if (o->onOff) {
+						this->agitatorLevel = this->speedLevels::normal;
+					} else {
+						this->agitatorLevel = this->speedLevels::stop;
+					}
+				}
+				this->config_fleet.entries[x].clear();
+			}
+		}
+		frc::SmartDashboard::PutNumber("Auto Custom L time",
+				((clock() - timestamp) / CLOCKS_PER_SEC) * 1000);
+	}
+
 	void AutonomousPeriodic() { // TODO: FIX THIS
 		/* This method is called each time the robot receives a
 		 * packet instructing the robot to be in Autonomous Enabled mode (approximately every 20ms)
 		 * This means that code in this method should return in 20 ms or less (no delays or loops)
 		 */
+
+		if(this->timestamp==0){
+			//Setup timers for Auto
+			this->timestamp = clock();
+		}
+
 		//autoVision();
 		switch (autoSelected) {
 		case (driveForward):
 			autoDriveForward();
-			pollVision();
 			break;
 		case (vision):
 			autoVision();
 			break;
+		case (custom):
+			autoCustom();
+			break;
 		default:
-			updateDrive(0, 0, 0, 0);
+			driveX = 0;
+			driveY = 0;
+			driveZ = 0;
+			driveGyro = 0;
 			break;
 		}
+		updateDrive(0, 0, 0, 0, false); // Just send previouse signals to motors to prevent watchdog.
+		run_agitator();
+		run_shooter();
+		//frc::SmartDashboard::PutNumber("NUM", ++xcount);
 		sendDataToDriverStation();
 		//frc::SmartDashboard::PutString("!!!",frc::SmartDashboard::GetString("Auto Selector", "-1"));
-		updateDrive(0, 0, 0, 0, false); // Just send previouse signals to motors to prevent watchdog.
 	}
 
 	void TeleopInit() {
@@ -697,19 +819,37 @@ public:
 	}
 
 	void TestInit() {
+		// Invert the left side motors
+		robotDrive.SetInvertedMotor(RobotDrive::kFrontLeftMotor, true);
+
+		// You may need to change or remove this to match your robot
+		robotDrive.SetInvertedMotor(RobotDrive::kRearLeftMotor, true);
+
 		//TimeCh1.Reset();
 		//TimeCh1.Start();
 		this->autoRecordPath = frc::SmartDashboard::GetString("Auto Record",
 				"");
 		this->autoRecord = (this->autoRecordPath.size() > 0);
-		if (this->autoRecord) {
-			this->config_fleet.entries.clear();
-			this->timer1.Reset();
-			this->timer1.Start();
-		}
+
+		//Reset values
+		this->config_fleet.entries.clear();
+		this->last_driveX = 0;
+		this->last_driveY = 0;
+		this->last_driveZ = 0;
+		this->last_driveGyro = 0;
+		this->agitatorLevel = this->speedLevels::stop;
+		this->shooterLevel = this->speedLevels::stop;
+		this->timestamp = 0;
 	}
 
-	void TestPeriodic() { // only runs if robot is in test mode
+	void TestPeriodic() {
+		if(this->timestamp==0){
+			//Setup timers for Auto
+			this->timestamp = clock();
+		}
+
+
+		// only runs if robot is in test mode
 		//lw->Run();
 		// get encoder values and send them to the dashboard
 		if (this->autoRecord) {		//Record drive, for auto mode
@@ -723,59 +863,138 @@ public:
 				drive(strafe, forwardBackward, turn, 0);
 				break;
 			}
-
-			double time = timer1.Get();
-			this->config_x.time = time;
-			this->config_y.time = time;
-			this->config_z.time = time;
-			this->config_gyro.time = time;
-			this->config_gear.time = time;
-			this->config_shoot.time = time;
-
-			this->config_x.x = strafe;
-			this->config_y.y = forwardBackward;
-			this->config_z.z = turn;
-			this->config_gyro.value = 0;
-			switch (this->driveLevel) {
-			case (slow):
-				this->config_gear.gear = actions::driveGear::slow;
-				break;
-			case (full):
-				this->config_gear.gear = actions::driveGear::full;
-				break;
-			default:
-				this->config_gear.gear = actions::driveGear::normal;
-				break;
-			}
-
-			switch (this->shooterLevel) {
-			case (slow):
-				this->config_shoot.gear = actions::shoot::slow;
-				break;
-			case (normal):
-				this->config_shoot.gear = actions::shoot::normal;
-				break;
-			case (full):
-				this->config_shoot.gear = actions::shoot::full;
-				break;
-			default:
-				this->config_shoot.gear = actions::shoot::off;
-				break;
-			}
-
-			u_int32_t id;
-			this->config_fleet.addEntry(&this->config_x, &id);
-			this->config_fleet.addEntry(&this->config_y, &id);
-			this->config_fleet.addEntry(&this->config_z, &id);
-			this->config_fleet.addEntry(&this->config_gyro, &id);
-			this->config_fleet.addEntry(&this->config_gear, &id);
-			this->config_fleet.addEntry(&this->config_shoot, &id);
-
+			double time = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC);
+			frc::SmartDashboard::PutNumber("time", time);
 			run_shooter();
 			run_agitator();
 			run_winch();
 			run_door();
 			getShooterConfig();
+
+			u_int32_t id;
+
+			if (false == true) { // NEEDS TESTING
+				if (abs(abs(this->last_driveX) - abs(this->forwardBackward))
+						> 0.05) {
+					this->last_driveX = this->forwardBackward;
+					this->config_x.time = time;
+					this->config_x.x = this->last_driveX;
+					this->config_fleet.addEntry(&this->config_x, &id);
+				}
+				if (abs(abs(this->last_driveY) - abs(this->strafe)) > 0.05) {
+					this->last_driveY = this->strafe;
+					this->config_y.time = time;
+					this->config_y.y = this->last_driveY;
+					this->config_fleet.addEntry(&this->config_y, &id);
+				}
+				if (abs(abs(this->last_driveZ) - abs(this->turn)) > 0.05) {
+					this->last_driveZ = this->turn;
+					this->config_z.time = time;
+					this->config_z.z = this->last_driveZ;
+					this->config_fleet.addEntry(&this->config_z, &id);
+				}
+				if (abs(abs(this->last_driveGyro) - abs(this->driveGyro))
+						> 0.05) {
+					this->last_driveGyro = this->driveGyro;
+					this->config_gyro.time = time;
+					this->config_gyro.value = this->last_driveGyro;
+					this->config_fleet.addEntry(&this->config_gyro, &id);
+				}
+				if (this->last_shooterLevel != this->shooterLevel) {
+					this->last_shooterLevel = this->shooterLevel;
+					this->config_shoot.time = time;
+					switch (this->shooterLevel) {
+					case (this->speedLevels::slow):
+						this->config_shoot.gear = this->config_shoot.slow;
+						break;
+					case (this->speedLevels::normal):
+						this->config_shoot.gear = this->config_shoot.normal;
+						break;
+					case (this->speedLevels::full):
+						this->config_shoot.gear = this->config_shoot.full;
+						break;
+					default:
+						this->config_shoot.gear = this->config_shoot.off;
+						break;
+					}
+					this->config_fleet.addEntry(&this->config_shoot, &id);
+
+				}
+				if (this->last_driveLevel != this->driveLevel) {
+					this->last_driveLevel = this->driveLevel;
+					this->config_gear.time = time;
+					switch (this->driveLevel) {
+					case (this->speedLevels::slow):
+						this->config_gear.gear = this->config_gear.slow;
+						break;
+					case (this->speedLevels::full):
+						this->config_gear.gear = this->config_gear.full;
+						break;
+					default:
+						this->config_gear.gear = this->config_gear.normal;
+						break;
+					}
+					this->config_fleet.addEntry(&this->config_gear, &id);
+				}
+				if (this->last_agitatorLevel != this->agitatorLevel) {
+					this->last_agitatorLevel = this->agitatorLevel;
+					this->config_agitator.time = time;
+					this->config_agitator.onOff = (this->last_agitatorLevel
+							== this->normal);
+					this->config_fleet.addEntry(&this->config_agitator, &id);
+				}
+			} else { // WORKS
+
+				this->config_x.time = time;
+				frc::SmartDashboard::PutNumber("auto x", this->config_x.time);
+				this->config_y.time = time;
+				this->config_z.time = time;
+				this->config_gyro.time = time;
+				this->config_gear.time = time;
+				this->config_shoot.time = time;
+				this->config_agitator.time = time;
+
+				this->config_x.x = strafe;
+				this->config_y.y = forwardBackward;
+				this->config_z.z = turn;
+				this->config_gyro.value = 0;
+				this->config_agitator.onOff = (this->agitatorLevel
+						== this->speedLevels::normal);
+				switch (this->driveLevel) {
+				case (slow):
+					this->config_gear.gear = actions::driveGear::slow;
+					break;
+				case (full):
+					this->config_gear.gear = actions::driveGear::full;
+					break;
+				default:
+					this->config_gear.gear = actions::driveGear::normal;
+					break;
+				}
+
+				switch (this->shooterLevel) {
+				case (slow):
+					this->config_shoot.gear = actions::shoot::slow;
+					break;
+				case (normal):
+					this->config_shoot.gear = actions::shoot::normal;
+					break;
+				case (full):
+					this->config_shoot.gear = actions::shoot::full;
+					break;
+				default:
+					this->config_shoot.gear = actions::shoot::off;
+					break;
+				}
+
+				this->config_fleet.addEntry(&this->config_x, &id);
+				this->config_fleet.addEntry(&this->config_y, &id);
+				this->config_fleet.addEntry(&this->config_z, &id);
+				this->config_fleet.addEntry(&this->config_gyro, &id);
+				this->config_fleet.addEntry(&this->config_gear, &id);
+				this->config_fleet.addEntry(&this->config_shoot, &id);
+				this->config_fleet.addEntry(&this->config_agitator, &id);
+			}
 
 			sendDataToDriverStation();
 		} else { // just vision polling
@@ -798,7 +1017,8 @@ public:
 		//Init Varibles
 
 		shooterEncoder = new Encoder(shooterEncoderChannelA,
-				shooterEncoderChannelB, false, Encoder::EncodingType::k4X);
+				shooterEncoderChannelB,
+				false, Encoder::EncodingType::k4X);
 		shooter.SetControlMode(
 				frc::CANSpeedController::ControlMode::kPercentVbus);
 		shooterEncoder->SetMaxPeriod(.1);
@@ -855,6 +1075,7 @@ public:
 		this->config_gyro = actions::gyro();
 		this->config_gear = actions::driveGear();
 		this->config_shoot = actions::shoot();
+		this->config_agitator = actions::agitator();
 
 		u_int32_t id;
 		this->config_fleet.addTemplate(&this->config_x, &id);
@@ -863,18 +1084,18 @@ public:
 		this->config_fleet.addTemplate(&this->config_gyro, &id);
 		this->config_fleet.addTemplate(&this->config_gear, &id);
 		this->config_fleet.addTemplate(&this->config_shoot, &id);
-
+		this->config_fleet.addTemplate(&this->config_agitator, &id);
 	}
 
 private:
 	frc::LiveWindow* lw = LiveWindow::GetInstance(); // this is for testing
 	frc::SendableChooser<std::string> chooser;
 	enum autoModes {
-		none = -1, driveForward = 0, vision = 1, custom=2
+		none = -1, driveForward = 0, vision = 1, custom = 2
 	};
 	autoModes autoSelected;
 
-	// Channels for the wheels
+// Channels for the wheels
 	static constexpr int kFrontLeftChannel = 0;
 	static constexpr int kRearLeftChannel = 2;
 	static constexpr int kFrontRightChannel = 1;
@@ -885,7 +1106,7 @@ private:
 	 static constexpr int kXboxChannel = 0;
 	 */
 
-	// Robot drive system
+// Robot drive system
 	frc::RobotDrive robotDrive { kFrontLeftChannel, kRearLeftChannel,
 			kFrontRightChannel, kRearRightChannel };
 
@@ -895,7 +1116,7 @@ private:
 	 * the xbox code) for use. Do not leave both sections uncommented.
 	 *
 	 ********************************************************/
-	//drive vars
+//drive vars
 	double forwardBackward, last_forwardBackward;
 	double turn, last_turn;
 	double strafe, last_strafe;
@@ -924,10 +1145,10 @@ private:
 	speedLevels last_driveLevel = normal, last_shooterLevel = normal;
 	speedLevels driveLevel = normal, shooterLevel = normal;
 
-	//shooter speeds
+//shooter speeds
 	double shooterSlow = 2000, shooterNormal = 4000, shooterFull = 8000;
 
-	//Gamepad
+//Gamepad
 	bool btn_driveToggle = false, btn_shooterToggle = false;
 
 	speedLevels last_agitatorLevel = stop;
@@ -937,7 +1158,7 @@ private:
 	speedLevels winchLevel = stop;
 	double winchNormal = 1, winchReverse = -1;
 
-	// Panel
+// Panel
 	bool runWinch = false;
 
 	std::shared_ptr<NetworkTable> table;
@@ -966,7 +1187,6 @@ private:
 	};
 
 	Timer timer1;
-
 };
 
 START_ROBOT_CLASS(Robot);

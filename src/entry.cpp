@@ -25,7 +25,8 @@ void entry::init(){
 }
 
 entry::entry() {
-    this->init();
+	this->id=-1;
+	this->data=NULL;
 }
 
 

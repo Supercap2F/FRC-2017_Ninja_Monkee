@@ -23,6 +23,8 @@ namespace toolbox{
      * some stuff
      */
     toolboxErrors toString(int value, std::string* output);
+
+    toolboxErrors doubleToString(double value, std::string* output);
     
     toolboxErrors boolToString(bool value, std::string* output);
     
@@ -31,6 +33,7 @@ namespace toolbox{
     int splitString(std::string* in, std::string* out, int start, int endPos);
     
     bool toInt(std::string* in, int* out);
+    bool toDouble(std::string* in, double* out);
     
     bool toBool(std::string* in, bool* out);
     
