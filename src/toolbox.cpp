@@ -114,7 +114,7 @@ bool toolbox::readFormatted(std::string* path, std::string* data){
     if(!file.good()){file.close();return false;}
     std::string tmp = "";
     while(!file.eof()){
-        file >> tmp;
+        file >> tmp; // gets a line
         data->append(tmp);
     }
     file.close();

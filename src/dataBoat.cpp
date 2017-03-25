@@ -15,6 +15,7 @@
  
 dataBoat::dataBoat() {
     this->className = "dataBoat";
+    this->time=0;
 }
 
 dataBoat::dataBoat(const dataBoat& orig) {

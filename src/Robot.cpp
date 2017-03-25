@@ -41,7 +41,8 @@ public:
 	string config_folder = "/home/lvuser/autoConfigs/";
 	string autoRecordPath;bool autoRecord;
 	unsigned int autoCustomLPos = 0;
-	clock_t timestamp;
+	clock_t timestamp = 0;
+	double autoTime = 0;
 
 	class shooterConfig {
 	public:
@@ -369,6 +370,9 @@ public:
 		} else if (str == "vision") {
 			autoSelected = vision;
 			frc::SmartDashboard::PutString("Auto Name", "Auto Vision");
+		} else if (str == "gearLeft") {
+			autoSelected = gearLeft;
+			frc::SmartDashboard::PutString("Auto Name", "Auto gearLeft");
 		} else if (str == "none") {
 			autoSelected = none;
 		} else {
@@ -425,8 +429,8 @@ public:
 	}
 
 	void setAutoMode(int mode) {
-		autoSubMode = mode;
-		frc::SmartDashboard::PutNumber("Auto Sub Mode", autoSubMode);
+		this->autoSubMode = mode;
+		frc::SmartDashboard::PutNumber("Auto Sub Mode", this->autoSubMode);
 	}
 
 	void run_door() {
@@ -589,22 +593,50 @@ public:
 		}
 	}
 
-	void autoDriveForward() {
+	void autoGearLeft() {
 		driveLevel = full;
-		switch (autoSubMode) {
-		case (0):
-			timer1.Reset();
+		frc::SmartDashboard::PutNumber("->auto time",this->autoTime);
+		frc::SmartDashboard::PutNumber("->auto time2",autoSubMode);
+		frc::SmartDashboard::PutNumber("->auto time3",this->autoTime>3.75);
+		//this->autoSubMode=0;
+		switch (this->autoSubMode) {
+		case (0): // forward
 			updateDrive(0, -0.40, 0, 0);
 			setAutoMode(1);
+			autoSubMode=1;
 			break;
 		case (1):
 			break;
-			if (timer1.Get() > 3.85) { // stop
-				updateDrive(0, 0, 0, 0);
+			if (this->autoTime > 3.75) { // stop and turn right
+				updateDrive(0, 0, .3, 0);
 				setAutoMode(2);
+				autoSubMode=2;
 			}
 			break;
+		case (2):
+			if (this->autoTime > 1) { // forward
+				updateDrive(0, -4.4, 0, 0);
+				setAutoMode(3);
+				autoSubMode=3;
+			}
+			break;
+		case(3):
+			if (this->autoTime > 5.25) { // stop
+				updateDrive(0, 0, 0, 0);
+				setAutoMode(4);
+				autoSubMode=4;
+			}
+			break;
+		case(4):break;
+		}
+	}
+
+	void autoDriveForward() {
+		driveLevel = full;
+		switch (autoSubMode) {
 		default:
+			updateDrive(0, -0.40, 0, 0);
+			setAutoMode(1);
 			break;
 		}
 	}
@@ -683,14 +715,12 @@ public:
 		if (this->autoCustomLPos >= this->config_fleet.entries.size()) {
 			return;
 		}
-		double time = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC);
-		frc::SmartDashboard::PutNumber("auto times",time);
 		for (unsigned int x = this->autoCustomLPos;
 				x < this->config_fleet.entries.size() /*Need time thing*/;
 				x++) {
 			dataBoat* b = this->config_fleet.entries[x].data;
 			//frc::SmartDashboard::PutNumber("Boat", b->time);
-			if (b != NULL && time >= b->time) {
+			if (b != NULL && this->autoTime >= b->time) {
 				this->autoCustomLPos = x;
 				if (b->className == this->config_x.className) {
 					driveX = ((actions::driveX*) b)->x;
@@ -750,29 +780,40 @@ public:
 		 * This means that code in this method should return in 20 ms or less (no delays or loops)
 		 */
 
-		if(this->timestamp==0){
+		if (this->timestamp == 0) {
 			//Setup timers for Auto
 			this->timestamp = clock();
 		}
-
+		this->autoTime = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC)*10;
+		frc::SmartDashboard::PutNumber("auto times", this->autoTime);
+		string err;
 		//autoVision();
 		switch (autoSelected) {
 		case (driveForward):
 			autoDriveForward();
+		err = "";
 			break;
 		case (vision):
 			autoVision();
+		err = "";
 			break;
 		case (custom):
 			autoCustom();
+		err = "";
+			break;
+		case(gearLeft):
+			autoGearLeft();
+		err = "";
 			break;
 		default:
 			driveX = 0;
 			driveY = 0;
 			driveZ = 0;
 			driveGyro = 0;
+			err = "Unknown value";
 			break;
 		}
+		frc::SmartDashboard::PutString("AutonomousPeriodic-> autoSelected: ERROR", err);
 		updateDrive(0, 0, 0, 0, false); // Just send previouse signals to motors to prevent watchdog.
 		run_agitator();
 		run_shooter();
@@ -843,11 +884,10 @@ public:
 	}
 
 	void TestPeriodic() {
-		if(this->timestamp==0){
+		if (this->timestamp == 0) {
 			//Setup timers for Auto
 			this->timestamp = clock();
 		}
-
 
 		// only runs if robot is in test mode
 		//lw->Run();
@@ -863,8 +903,7 @@ public:
 				drive(strafe, forwardBackward, turn, 0);
 				break;
 			}
-			double time = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC);
-			frc::SmartDashboard::PutNumber("time", time);
+			frc::SmartDashboard::PutNumber("time", this->autoTime);
 			run_shooter();
 			run_agitator();
 			run_winch();
@@ -877,32 +916,32 @@ public:
 				if (abs(abs(this->last_driveX) - abs(this->forwardBackward))
 						> 0.05) {
 					this->last_driveX = this->forwardBackward;
-					this->config_x.time = time;
+					this->config_x.time = this->autoTime;
 					this->config_x.x = this->last_driveX;
 					this->config_fleet.addEntry(&this->config_x, &id);
 				}
 				if (abs(abs(this->last_driveY) - abs(this->strafe)) > 0.05) {
 					this->last_driveY = this->strafe;
-					this->config_y.time = time;
+					this->config_y.time = this->autoTime;
 					this->config_y.y = this->last_driveY;
 					this->config_fleet.addEntry(&this->config_y, &id);
 				}
 				if (abs(abs(this->last_driveZ) - abs(this->turn)) > 0.05) {
 					this->last_driveZ = this->turn;
-					this->config_z.time = time;
+					this->config_z.time = this->autoTime;
 					this->config_z.z = this->last_driveZ;
 					this->config_fleet.addEntry(&this->config_z, &id);
 				}
 				if (abs(abs(this->last_driveGyro) - abs(this->driveGyro))
 						> 0.05) {
 					this->last_driveGyro = this->driveGyro;
-					this->config_gyro.time = time;
+					this->config_gyro.time = this->autoTime;
 					this->config_gyro.value = this->last_driveGyro;
 					this->config_fleet.addEntry(&this->config_gyro, &id);
 				}
 				if (this->last_shooterLevel != this->shooterLevel) {
 					this->last_shooterLevel = this->shooterLevel;
-					this->config_shoot.time = time;
+					this->config_shoot.time = this->autoTime;
 					switch (this->shooterLevel) {
 					case (this->speedLevels::slow):
 						this->config_shoot.gear = this->config_shoot.slow;
@@ -922,7 +961,7 @@ public:
 				}
 				if (this->last_driveLevel != this->driveLevel) {
 					this->last_driveLevel = this->driveLevel;
-					this->config_gear.time = time;
+					this->config_gear.time = this->autoTime;
 					switch (this->driveLevel) {
 					case (this->speedLevels::slow):
 						this->config_gear.gear = this->config_gear.slow;
@@ -938,21 +977,21 @@ public:
 				}
 				if (this->last_agitatorLevel != this->agitatorLevel) {
 					this->last_agitatorLevel = this->agitatorLevel;
-					this->config_agitator.time = time;
+					this->config_agitator.time = this->autoTime;
 					this->config_agitator.onOff = (this->last_agitatorLevel
 							== this->normal);
 					this->config_fleet.addEntry(&this->config_agitator, &id);
 				}
 			} else { // WORKS
 
-				this->config_x.time = time;
+				this->config_x.time = this->autoTime;
 				frc::SmartDashboard::PutNumber("auto x", this->config_x.time);
-				this->config_y.time = time;
-				this->config_z.time = time;
-				this->config_gyro.time = time;
-				this->config_gear.time = time;
-				this->config_shoot.time = time;
-				this->config_agitator.time = time;
+				this->config_y.time = this->autoTime;
+				this->config_z.time = this->autoTime;
+				this->config_gyro.time = this->autoTime;
+				this->config_gear.time = this->autoTime;
+				this->config_shoot.time = this->autoTime;
+				this->config_agitator.time = this->autoTime;
 
 				this->config_x.x = strafe;
 				this->config_y.y = forwardBackward;
@@ -1091,7 +1130,7 @@ private:
 	frc::LiveWindow* lw = LiveWindow::GetInstance(); // this is for testing
 	frc::SendableChooser<std::string> chooser;
 	enum autoModes {
-		none = -1, driveForward = 0, vision = 1, custom = 2
+		none = -1, driveForward = 0, vision = 1, custom = 2, gearLeft = 3
 	};
 	autoModes autoSelected;
 
