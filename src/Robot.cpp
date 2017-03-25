@@ -426,6 +426,7 @@ public:
 		timer1.Reset();
 		timer1.Start();
 		this->timestamp = 0;
+		this->setAutoMode(0);
 	}
 
 	void setAutoMode(int mode) {
@@ -595,36 +596,27 @@ public:
 
 	void autoGearLeft() {
 		driveLevel = full;
-		frc::SmartDashboard::PutNumber("->auto time",this->autoTime);
-		frc::SmartDashboard::PutNumber("->auto time2",autoSubMode);
-		frc::SmartDashboard::PutNumber("->auto time3",this->autoTime>3.75);
-		//this->autoSubMode=0;
 		switch (this->autoSubMode) {
 		case (0): // forward
 			updateDrive(0, -0.40, 0, 0);
 			setAutoMode(1);
-			autoSubMode=1;
 			break;
 		case (1):
-			break;
-			if (this->autoTime > 3.75) { // stop and turn right
+			if (this->autoTime > 2) { // stop and turn right
 				updateDrive(0, 0, .3, 0);
 				setAutoMode(2);
-				autoSubMode=2;
 			}
 			break;
 		case (2):
-			if (this->autoTime > 1) { // forward
+			if (this->autoTime > 4) { // forward
 				updateDrive(0, -4.4, 0, 0);
 				setAutoMode(3);
-				autoSubMode=3;
 			}
 			break;
 		case(3):
-			if (this->autoTime > 5.25) { // stop
+			if (this->autoTime > 6) { // stop
 				updateDrive(0, 0, 0, 0);
 				setAutoMode(4);
-				autoSubMode=4;
 			}
 			break;
 		case(4):break;
@@ -719,11 +711,10 @@ public:
 				x < this->config_fleet.entries.size() /*Need time thing*/;
 				x++) {
 			dataBoat* b = this->config_fleet.entries[x].data;
-			//frc::SmartDashboard::PutNumber("Boat", b->time);
 			if (b != NULL && this->autoTime >= b->time) {
 				this->autoCustomLPos = x;
 				if (b->className == this->config_x.className) {
-					driveX = ((actions::driveX*) b)->x;
+					this->driveX = ((actions::driveX*) b)->x;
 				} else if (b->className == this->config_y.className) {
 					driveY = ((actions::driveY*) b)->y;
 				} else if (b->className == this->config_z.className) {
@@ -770,8 +761,8 @@ public:
 				this->config_fleet.entries[x].clear();
 			}
 		}
-		frc::SmartDashboard::PutNumber("Auto Custom L time",
-				((clock() - timestamp) / CLOCKS_PER_SEC) * 1000);
+		frc::SmartDashboard::PutNumber("auto Custom L pos",this->autoCustomLPos);
+		frc::SmartDashboard::PutNumber("Auto Custom L time",this->autoTime);
 	}
 
 	void AutonomousPeriodic() { // TODO: FIX THIS
@@ -784,7 +775,7 @@ public:
 			//Setup timers for Auto
 			this->timestamp = clock();
 		}
-		this->autoTime = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC)*10;
+		this->autoTime = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC);
 		frc::SmartDashboard::PutNumber("auto times", this->autoTime);
 		string err;
 		//autoVision();
@@ -903,7 +894,6 @@ public:
 				drive(strafe, forwardBackward, turn, 0);
 				break;
 			}
-			frc::SmartDashboard::PutNumber("time", this->autoTime);
 			run_shooter();
 			run_agitator();
 			run_winch();
@@ -911,29 +901,31 @@ public:
 			getShooterConfig();
 
 			u_int32_t id;
+			this->autoTime = ((clock()-this->timestamp)/(double)CLOCKS_PER_SEC);
+			frc::SmartDashboard::PutNumber("time", this->autoTime);
 
-			if (false == true) { // NEEDS TESTING
+			if (true) { // NEEDS TESTING
 				if (abs(abs(this->last_driveX) - abs(this->forwardBackward))
-						> 0.05) {
+						> 0.01) {
 					this->last_driveX = this->forwardBackward;
 					this->config_x.time = this->autoTime;
 					this->config_x.x = this->last_driveX;
 					this->config_fleet.addEntry(&this->config_x, &id);
 				}
-				if (abs(abs(this->last_driveY) - abs(this->strafe)) > 0.05) {
+				if (abs(abs(this->last_driveY) - abs(this->strafe)) > 0.01) {
 					this->last_driveY = this->strafe;
 					this->config_y.time = this->autoTime;
 					this->config_y.y = this->last_driveY;
 					this->config_fleet.addEntry(&this->config_y, &id);
 				}
-				if (abs(abs(this->last_driveZ) - abs(this->turn)) > 0.05) {
+				if (abs(abs(this->last_driveZ) - abs(this->turn)) > 0.01) {
 					this->last_driveZ = this->turn;
 					this->config_z.time = this->autoTime;
 					this->config_z.z = this->last_driveZ;
 					this->config_fleet.addEntry(&this->config_z, &id);
 				}
 				if (abs(abs(this->last_driveGyro) - abs(this->driveGyro))
-						> 0.05) {
+						> 0.01) {
 					this->last_driveGyro = this->driveGyro;
 					this->config_gyro.time = this->autoTime;
 					this->config_gyro.value = this->last_driveGyro;

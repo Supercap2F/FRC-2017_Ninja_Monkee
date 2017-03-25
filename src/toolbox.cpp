@@ -28,7 +28,7 @@ toolbox::toolboxErrors toolbox::toString(int value, std::string* output){
 
 toolbox::toolboxErrors toolbox::doubleToString(double value, std::string* output){
     std::stringstream s;
-    s << (value*1000);
+    s << (value*100000);
     *output = s.str();
     return toolbox::toolboxError_noError;
 }
@@ -73,7 +73,7 @@ bool toolbox::toInt(std::string* in, int* out){
 
 
 bool toolbox::toDouble(std::string* in, double* out){
-    (*out) = atoi(in->c_str())/(double)1000;
+    (*out) = atoi(in->c_str())/(double)100000;
     return true;
 }
 
